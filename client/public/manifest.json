@@ -1,0 +1,24 @@
+{
+  "name": "Bharosa (भरोसा) — Stall Payment & Khata Assistant",
+  "short_name": "Bharosa",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F5F7",
+  "theme_color": "#1B8A3A",
+  "description": "Speak orders, verify PayPal QR payments, and recover Khata politely.",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "bharosa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bharosa - Voice-first payment & credit-recovery assistant for street vendors (PayPal AI Hackathon)",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "npm run start --prefix server",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "simulate": "node server/scripts/simulate.js",
+    "test": "npm test --prefix server"
+  }
+}
+
