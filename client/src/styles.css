@@ -5260,6 +5260,488 @@ body.sunlight-mode .khata-card {
   background: #4ADE80;
 }
 
+/* =========================================================================
+   3-Step Vendor Registration & PayPal Onboarding Wizard + Khata Customer Reg
+   ========================================================================= */
+.vendor-verified-sub {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #1E5AA8;
+  margin-top: 2px;
+}
+
+.btn-register-stall-pill {
+  border: 1.5px solid #1E5AA8;
+  background: #EFF6FF;
+  color: #1E3A8A;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 6px 11px;
+  border-radius: 99px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transition: all 0.14s ease;
+}
+
+.btn-register-stall-pill:hover {
+  background: #DBEAFE;
+}
+
+.onboarding-wizard-card {
+  max-width: 680px;
+}
+
+.onboarding-judge-bypass {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #FEF3C7;
+  border: 1.5px solid #F59E0B;
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+
+.onboarding-judge-bypass div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.onboarding-judge-bypass strong {
+  font-size: 0.82rem;
+  color: #92400E;
+}
+
+.onboarding-judge-bypass span {
+  font-size: 0.74rem;
+  color: #78350F;
+}
+
+.onboarding-bypass-btn {
+  border: none;
+  background: #D97706;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 6px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.onboarding-bypass-btn:hover {
+  background: #B45309;
+}
+
+.onboarding-steps-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: #F1F5F9;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1.5px solid #CBD5E1;
+}
+
+.onboarding-step-tab {
+  border: none;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.onboarding-step-tab.active {
+  background: #0F172A;
+  color: #ffffff;
+}
+
+.onboarding-step-tab.done {
+  color: #15803D;
+}
+
+.step-num-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.onboarding-step-tab.active .step-num-circle {
+  background: #38BDF8;
+  color: #0F172A;
+}
+
+.onboarding-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onboarding-lang-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.onboarding-lang-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.onboarding-lang-btn {
+  border: 1.5px solid #CBD5E1;
+  background: #ffffff;
+  color: #1E293B;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+}
+
+.onboarding-lang-btn.active {
+  border-color: #0F172A;
+  background: #0F172A;
+  color: #ffffff;
+}
+
+.onboarding-voice-box {
+  background: #F0FDF4;
+  border: 1.5px solid #86EFAC;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding-voice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.onboarding-voice-header small {
+  font-size: 0.74rem;
+  color: #166534;
+  font-weight: 700;
+}
+
+.onboarding-mic-btn {
+  border: none;
+  background: #16A34A;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 8px 14px;
+  border-radius: 99px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-mic-btn.listening {
+  background: #DC2626;
+}
+
+.onboarding-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.onboarding-preset-chip {
+  border: 1.5px solid #BBF7D0;
+  background: #ffffff;
+  color: #14532D;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 99px;
+  cursor: pointer;
+}
+
+.onboarding-preset-chip.active {
+  border-color: #15803D;
+  background: #DCFCE7;
+}
+
+.onboarding-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .onboarding-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.onboarding-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboarding-field span {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.onboarding-field input {
+  border: 1.5px solid #CBD5E1;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.onboarding-phone-row {
+  display: flex;
+  gap: 6px;
+}
+
+.onboarding-phone-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.onboarding-otp-btn {
+  border: 1.5px solid #16A34A;
+  background: #DCFCE7;
+  color: #14532D;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  padding: 6px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.onboarding-otp-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #DCFCE7;
+  color: #166534;
+  padding: 7px 11px;
+  border-radius: 9px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.onboarding-paypal-card {
+  background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%);
+  color: #F8FAFC;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onboarding-paypal-card h3 {
+  margin: 6px 0 4px;
+  font-size: 1.1rem;
+}
+
+.onboarding-paypal-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #CBD5E1;
+}
+
+.onboarding-paypal-card .onboarding-field span {
+  color: #BAE6FD;
+}
+
+.onboarding-paypal-connect-btn {
+  border: none;
+  border-radius: 11px;
+  background: #FACC15;
+  color: #0F172A;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 900;
+  padding: 11px 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.onboarding-paypal-connect-btn.connected {
+  background: #22C55E;
+  color: #052E16;
+}
+
+.onboarding-paypal-perks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #E2E8F0;
+}
+
+.onboarding-paypal-perks div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.onboarding-back-btn {
+  border: 1.5px solid #CBD5E1;
+  background: #ffffff;
+  color: #334155;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  padding: 12px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Khata Add Customer Inline Drawer */
+.khata-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-khata-add-cust {
+  border: 1.5px solid #16A34A;
+  background: #DCFCE7;
+  color: #14532D;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 7px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.khata-add-cust-drawer {
+  background: #ffffff;
+  border: 2px solid #16A34A;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.khata-add-cust-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88rem;
+}
+
+.khata-add-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #64748B;
+}
+
+.khata-add-cust-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 0.8fr auto;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .khata-add-cust-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.khata-add-cust-grid input {
+  border: 1.5px solid #CBD5E1;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.khata-add-submit-btn {
+  border: none;
+  border-radius: 9px;
+  background: #16A34A;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 900;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.khata-add-error {
+  font-size: 0.78rem;
+  color: #DC2626;
+  font-weight: 700;
+}
+
+
 
 
 

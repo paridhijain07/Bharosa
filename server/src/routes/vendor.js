@@ -558,5 +558,94 @@ router.post('/verify-receipt', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/vendor/register
+ * Registers / updates the active Vendor stall profile (3-Step Onboarding Wizard):
+ * Step 1: Stall Identity, Owner Name, Mobile Phone, Language & City
+ * Step 2: PayPal Merchant Account Connection (paypalEmail & paypalMerchantId)
+ * Step 3: Initial Menu Items (from AI Vision scan or category preset)
+ */
+router.post('/register', async (req, res) => {
+  try {
+    const {
+      stallName,
+      ownerName,
+      phone,
+      city,
+      category,
+      language,
+      paypalEmail,
+      paypalMerchantId,
+      items,
+      presetKey,
+    } = req.body || {};
+
+    let vendor = await Vendor.findOne();
+    if (!vendor) {
+      vendor = new Vendor({
+        name: stallName || 'Sharma Ji Chaat & Chai Stall',
+      });
+    }
+
+    if (stallName && String(stallName).trim()) {
+      vendor.name = String(stallName).trim();
+    }
+    if (ownerName && String(ownerName).trim()) {
+      vendor.ownerName = String(ownerName).trim();
+    }
+    if (phone && String(phone).trim()) {
+      vendor.phone = String(phone).trim();
+    }
+    if (city && String(city).trim()) {
+      vendor.city = String(city).trim();
+    }
+    if (category && ['chaat', 'cafeteria', 'juice', 'tea', 'custom'].includes(category)) {
+      vendor.category = category;
+    }
+    if (language && ['hi', 'en'].includes(language)) {
+      vendor.language = language;
+    }
+    if (paypalEmail && String(paypalEmail).trim()) {
+      vendor.paypalEmail = String(paypalEmail).trim();
+    }
+    vendor.paypalMerchantId =
+      paypalMerchantId ||
+      vendor.paypalMerchantId ||
+      `PPMERCHANT-IN-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    vendor.paypalConnected = true;
+    vendor.onboardingCompleted = true;
+
+    const chosenItems =
+      Array.isArray(items) && items.length > 0
+        ? items
+        : presetKey && MENU_CARD_PRESETS[presetKey]
+          ? MENU_CARD_PRESETS[presetKey].items
+          : vendor.menu;
+
+    if (Array.isArray(chosenItems) && chosenItems.length > 0) {
+      vendor.menu = chosenItems
+        .filter((i) => i && String(i.name || '').trim() && Number(i.price) >= 0)
+        .map((i) => ({
+          name: String(i.name).trim(),
+          emoji: i.emoji || inferEmoji(i.name),
+          price: Math.round(Number(i.price)),
+          aliases: buildVoiceAliases(i.name, i.aliases),
+        }));
+    }
+
+    await vendor.save();
+    emitSocketEvent('vendor:updated', { vendor });
+
+    return res.json({
+      ok: true,
+      vendor,
+      spokenHi: `बधाई हो ${vendor.ownerName || ''}! ${vendor.name} का रजिस्ट्रेशन और PayPal खाता जुड़ गया है। अब आप बोलकर ऑर्डर ले सकते हैं!`,
+      spokenEn: `Welcome ${vendor.ownerName || ''}! ${vendor.name} is registered and connected to PayPal. Voice AI is ready for orders!`,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
 

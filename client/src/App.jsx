@@ -14,6 +14,7 @@ import {
   Clock,
   Smartphone,
   Camera,
+  Store,
 } from 'lucide-react';
 import { socket } from './lib/socket.js';
 import {
@@ -44,6 +45,7 @@ import StallDisplay from './components/StallDisplay.jsx';
 import IncomePage from './components/IncomePage.jsx';
 import JudgeSimulatorPanel from './components/JudgeSimulatorPanel.jsx';
 import MenuScannerModal from './components/MenuScannerModal.jsx';
+import VendorOnboardingModal from './components/VendorOnboardingModal.jsx';
 
 export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -196,6 +198,13 @@ function VendorHomeScreen({ lang, setLang }) {
   const [smartTimingModalOpen, setSmartTimingModalOpen] = useState(false);
   const [judgeSplitOpen, setJudgeSplitOpen] = useState(false);
   const [menuScannerOpen, setMenuScannerOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(() => {
+    try {
+      return localStorage.getItem('bharosa_onboarded') !== '1';
+    } catch {
+      return false;
+    }
+  });
   const [scannerInitialMode, setScannerInitialMode] = useState('menu');
   const [pitchResetting, setPitchResetting] = useState(false);
   const [activeTourStep, setActiveTourStep] = useState(0);
@@ -1038,15 +1047,28 @@ function VendorHomeScreen({ lang, setLang }) {
         lang={lang}
       />
 
-      {/* 2. Uncrowded Header (Part A1.1): Single-line stall name + ONLY Language Toggle & Menu button */}
+      {/* 2. Uncrowded Header (Part A1.1): Single-line stall name + Register/Switch Stall + Language Toggle & Menu button */}
       <header className="stall-header">
         <div className="brand-block">
           <h1 className="brand-title" title={vendor?.name || 'Sharma Ji Chaat & Chai Stall'}>
             {vendor?.name || 'Sharma Ji Chaat & Chai Stall'}
           </h1>
+          <span className="vendor-verified-sub">
+            💙 PayPal Verified • {vendor?.ownerName || 'Sharma Ji'} ({vendor?.paypalMerchantId || 'PPMERCHANT-IN'})
+          </span>
         </div>
 
         <div className="header-controls">
+          <button
+            type="button"
+            className="btn-register-stall-pill"
+            onClick={() => setOnboardingOpen(true)}
+            title="Register or Switch Vendor Stall"
+          >
+            <Store size={15} />{' '}
+            <span>{lang === 'hi' ? 'स्टॉल रजिस्टर / बदलें' : 'Register / Switch Stall'}</span>
+          </button>
+
           <button
             type="button"
             className="lang-pill-btn"
@@ -1253,6 +1275,17 @@ function VendorHomeScreen({ lang, setLang }) {
               : lang === 'hi'
                 ? '🎬 डेमो रीसेट करें'
                 : '🎬 Reset Pitch State'}
+          </button>
+
+          <button
+            type="button"
+            className={`judge-tour-step-pill ${activeTourStep === 6 ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTourStep(6);
+              setOnboardingOpen(true);
+            }}
+          >
+            🏪 {lang === 'hi' ? 'स्टॉल रजिस्टर (Onboard)' : 'Vendor Onboarding'}
           </button>
 
           <button
@@ -1814,6 +1847,31 @@ function VendorHomeScreen({ lang, setLang }) {
           fetchAllData();
         }}
         onCreateOrderFromSlip={(payload) => createTabFromParsed(payload)}
+      />
+
+      {/* 3-Step Vendor Registration & PayPal Onboarding Wizard */}
+      <VendorOnboardingModal
+        isOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        vendor={vendor}
+        lang={lang}
+        onChangeLang={(nextLang) => setLang(nextLang)}
+        currencySymbol={currencySymbol}
+        onRegistered={(data) => {
+          if (data?.vendor) {
+            setVendor(data.vendor);
+          }
+          addToast(
+            lang === 'hi'
+              ? `🚀 ${data?.vendor?.name || 'स्टॉल'} रजिस्टर और PayPal से जुड़ गया!`
+              : `🚀 ${data?.vendor?.name || 'Stall'} registered & linked to PayPal!`,
+            'paid'
+          );
+          if (data?.spokenHi || data?.spokenEn) {
+            speakText(lang === 'hi' ? data.spokenHi : data.spokenEn, lang);
+          }
+          fetchAllData();
+        }}
       />
 
       {/* Part 2.4: Smart Alert Timing Modal */}

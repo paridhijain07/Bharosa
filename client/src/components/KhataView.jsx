@@ -7,6 +7,7 @@ import {
   Check,
   Edit3,
   User,
+  UserPlus,
   BookOpen,
   ExternalLink,
   AlertTriangle,
@@ -128,6 +129,52 @@ export default function KhataView({
   const [actionBusyId, setActionBusyId] = useState(null);
   const [expandedChatIds, setExpandedChatIds] = useState({});
   const [dismissedReminderKey, setDismissedReminderKey] = useState(null);
+  const [addCustOpen, setAddCustOpen] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('+919876543219');
+  const [newCustLimit, setNewCustLimit] = useState('300');
+  const [addingCust, setAddingCust] = useState(false);
+  const [addCustError, setAddCustError] = useState('');
+
+  const handleCreateCustomer = async (e) => {
+    e.preventDefault();
+    if (!newCustName.trim() || addingCust) return;
+    setAddingCust(true);
+    setAddCustError('');
+    try {
+      const normalizedPhone = newCustPhone.trim().startsWith('+')
+        ? newCustPhone.trim()
+        : `+91${newCustPhone.replace(/\D/g, '')}`;
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCustName.trim(),
+          phone: normalizedPhone,
+          whatsappConsent: true,
+          creditLimit: Number(newCustLimit) || 300,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAddCustError(data.error || 'Could not register customer');
+      } else {
+        speakText(
+          lang === 'hi'
+            ? `${newCustName.trim()} का नाम खाता रजिस्टर में जुड़ गया है।`
+            : `${newCustName.trim()} added to your Khata register.`,
+          lang
+        );
+        setNewCustName('');
+        setAddCustOpen(false);
+        onRefresh?.();
+      }
+    } catch (err) {
+      setAddCustError(err.message);
+    } finally {
+      setAddingCust(false);
+    }
+  };
 
   const toggleChatThread = (customerId) => {
     setExpandedChatIds((prev) => ({
@@ -265,15 +312,76 @@ export default function KhataView({
           <BookOpen size={22} aria-hidden="true" />{' '}
           {lang === 'hi' ? 'उधार / खाता रजिस्टर' : 'Khata Credit Register'}
         </h2>
-        <button
-          type="button"
-          className="btn-khata-summary-pill"
-          onClick={handleSpeakAllKhata}
-        >
-          <Volume2 size={18} aria-hidden="true" />{' '}
-          {lang === 'hi' ? 'पूरा हिसाब सुनें' : 'Hear Summary'}
-        </button>
+        <div className="khata-header-actions">
+          <button
+            type="button"
+            className="btn-khata-add-cust"
+            onClick={() => setAddCustOpen((o) => !o)}
+          >
+            <UserPlus size={17} aria-hidden="true" />{' '}
+            {lang === 'hi' ? '+ नया ग्राहक जोड़ें' : '+ Add Regular'}
+          </button>
+          <button
+            type="button"
+            className="btn-khata-summary-pill"
+            onClick={handleSpeakAllKhata}
+          >
+            <Volume2 size={18} aria-hidden="true" />{' '}
+            {lang === 'hi' ? 'पूरा हिसाब सुनें' : 'Hear Summary'}
+          </button>
+        </div>
       </div>
+
+      {/* Inline New Regular Customer Registration Drawer */}
+      {addCustOpen && (
+        <form className="khata-add-cust-drawer" onSubmit={handleCreateCustomer}>
+          <div className="khata-add-cust-top">
+            <strong>
+              {lang === 'hi'
+                ? '👤 नया रेगुलर उधार ग्राहक रजिस्टर करें'
+                : '👤 Register New Regular Khata Customer'}
+            </strong>
+            <button
+              type="button"
+              className="khata-add-close"
+              onClick={() => setAddCustOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="khata-add-cust-grid">
+            <input
+              type="text"
+              placeholder={lang === 'hi' ? 'ग्राहक का नाम (जैसे: मोहन)' : 'Customer Name (e.g. Mohan)'}
+              value={newCustName}
+              onChange={(e) => setNewCustName(e.target.value)}
+              required
+            />
+            <input
+              type="text"
+              placeholder="WhatsApp (+919876543219)"
+              value={newCustPhone}
+              onChange={(e) => setNewCustPhone(e.target.value)}
+              required
+            />
+            <input
+              type="number"
+              placeholder={`${currencySymbol} Credit Limit (300)`}
+              value={newCustLimit}
+              onChange={(e) => setNewCustLimit(e.target.value)}
+            />
+            <button type="submit" className="khata-add-submit-btn" disabled={addingCust}>
+              <Check size={16} />{' '}
+              {addingCust
+                ? '...'
+                : lang === 'hi'
+                  ? 'रजिस्टर करें'
+                  : 'Save Customer'}
+            </button>
+          </div>
+          {addCustError && <div className="khata-add-error">⚠️ {addCustError}</div>}
+        </form>
+      )}
 
       {/* Part 1.7: "Needs you" list at the top of KhataView (NEEDS_VENDOR & DISPUTE) */}
       {needsYouCustomers.length > 0 && (
