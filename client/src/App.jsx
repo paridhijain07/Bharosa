@@ -1235,11 +1235,11 @@ function VendorHomeScreen({ lang, setLang }) {
         </div>
       </header>
 
-      {/* 🏆 Interactive 90-Second Judge Pitch Tour & 1-Click Pitch Reset Bar */}
-      <section className="judge-tour-ribbon" aria-label="90-Second Judge Tour">
+      {/* Stall Quick Controls & Feature Ribbon */}
+      <section className="judge-tour-ribbon" aria-label="Stall Quick Controls">
         <div className="judge-tour-title">
-          <span className="judge-tour-trophy">🏆</span>
-          <strong>{lang === 'hi' ? '90-सेकंड जज टूर:' : '90-Sec Judge Tour:'}</strong>
+          <span className="judge-tour-trophy">⚡</span>
+          <strong>{lang === 'hi' ? 'स्टॉल कंट्रोल:' : 'Quick Controls:'}</strong>
         </div>
 
         <div className="judge-tour-steps">
@@ -1251,15 +1251,15 @@ function VendorHomeScreen({ lang, setLang }) {
               setPitchResetting(true);
               setActiveTourStep(0);
               try {
-                const res = await fetch('/api/dev/pitch-reset', { method: 'POST' });
+                const res = await fetch('/api/dev/clean-slate', { method: 'POST' });
                 const data = await res.json();
                 await fetchAllData();
                 setActiveView('tabs');
                 setOrderFilter('smart');
                 addToast(
                   lang === 'hi'
-                    ? '🎬 जज डेमो रीसेट हो गया! (नया ₹100 ऑर्डर + ₹180 ग्रुप ऑर्डर + राजू का खाता तैयार)'
-                    : '🎬 Pitch State Ready! (Fresh ₹100 Order + ₹180 Split Order + Raju Khata)',
+                    ? '✓ नया दिन शुरू — सभी पुराने ऑर्डर साफ़ (₹0)'
+                    : '✓ Fresh shift started — queue cleared (₹0)',
                   'paid'
                 );
                 if (data.spokenHi || data.spokenEn) {
@@ -1273,8 +1273,8 @@ function VendorHomeScreen({ lang, setLang }) {
             {pitchResetting
               ? '⏳...'
               : lang === 'hi'
-                ? '🎬 डेमो रीसेट करें'
-                : '🎬 Reset Pitch State'}
+                ? '↻ नया दिन (₹0 रीसेट)'
+                : '↻ New Shift (₹0)'}
           </button>
 
           <button
@@ -1285,7 +1285,7 @@ function VendorHomeScreen({ lang, setLang }) {
               setOnboardingOpen(true);
             }}
           >
-            🏪 {lang === 'hi' ? 'स्टॉल रजिस्टर (Onboard)' : 'Vendor Onboarding'}
+            🏪 {lang === 'hi' ? 'स्टॉल रजिस्टर' : 'Stall Setup'}
           </button>
 
           <button
@@ -1297,7 +1297,7 @@ function VendorHomeScreen({ lang, setLang }) {
               setMenuScannerOpen(true);
             }}
           >
-            1️⃣ {lang === 'hi' ? 'मेन्यू स्कैनर (AI)' : 'Scan Menu Card'}
+            📸 {lang === 'hi' ? 'मेन्यू स्कैनर (AI)' : 'Scan Menu Card'}
           </button>
 
           <button
@@ -1313,7 +1313,7 @@ function VendorHomeScreen({ lang, setLang }) {
               processTranscript(`2 ${first} aur 1 ${second}`);
             }}
           >
-            2️⃣ {lang === 'hi' ? 'बोलकर ऑर्डर (Voice)' : 'Voice Order AI'}
+            🎙️ {lang === 'hi' ? 'बोलकर ऑर्डर (Voice)' : 'Voice Order AI'}
           </button>
 
           <button
@@ -1325,7 +1325,7 @@ function VendorHomeScreen({ lang, setLang }) {
               setMenuScannerOpen(true);
             }}
           >
-            3️⃣ {lang === 'hi' ? 'नकली स्क्रीनशॉट जांच' : 'Fake Receipt Shield'}
+            🛡️ {lang === 'hi' ? 'नकली रसीद जांच' : 'Receipt Shield'}
           </button>
 
           <button
@@ -1337,7 +1337,7 @@ function VendorHomeScreen({ lang, setLang }) {
               setJudgeSplitOpen(true);
             }}
           >
-            4️⃣ {lang === 'hi' ? 'WhatsApp AI + Split ÷2' : 'WhatsApp AI + Split ÷2'}
+            📱 {lang === 'hi' ? 'WhatsApp AI + Split ÷2' : 'WhatsApp AI + Split ÷2'}
           </button>
 
           <a
@@ -1345,7 +1345,7 @@ function VendorHomeScreen({ lang, setLang }) {
             className={`judge-tour-step-pill step-loan ${activeTourStep === 5 ? 'active' : ''}`}
             onClick={() => setActiveTourStep(5)}
           >
-            5️⃣ {lang === 'hi' ? 'PayPal माइक्रो-लोन' : 'PayPal Micro-Loan'}
+            💙 {lang === 'hi' ? 'PayPal माइक्रो-लोन' : 'PayPal Micro-Loan'}
           </a>
         </div>
       </section>
@@ -1368,7 +1368,7 @@ function VendorHomeScreen({ lang, setLang }) {
             lang={lang}
           />
 
-          {/* 1-Click Judge Live Customer Phone Simulator Toggle */}
+          {/* Customer Phone Live View Toggle */}
           <button
             type="button"
             className={`judge-launcher-card ${judgeSplitOpen ? 'active' : ''}`}
@@ -1379,8 +1379,8 @@ function VendorHomeScreen({ lang, setLang }) {
               <div>
                 <strong>
                   {lang === 'hi'
-                    ? '🎬 जज लाइव ग्राहक फ़ोन (WhatsApp + PayPal)'
-                    : '🎬 Live Customer Phone (WhatsApp + PayPal)'}
+                    ? '📱 ग्राहक फ़ोन व्यू (WhatsApp + PayPal)'
+                    : '📱 Customer Phone View (WhatsApp + PayPal)'}
                 </strong>
                 <span>
                   {lang === 'hi'

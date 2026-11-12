@@ -87,11 +87,6 @@ export default function SmartAlertTimingCard({
               <Sparkles size={15} />{' '}
               {lang === 'hi' ? 'स्मार्ट अलर्ट टाइमिंग' : 'Smart Alert Timing'}
             </span>
-            {report.isDemoData && (
-              <span className="demo-data-badge demo-badge-inline">
-                {lang === 'hi' ? 'डेमो डेटा' : 'Demo data'}
-              </span>
-            )}
           </div>
           <h3 className="smart-timing-title">
             {lang === 'hi'

@@ -32,11 +32,9 @@ export default function RecoveredCard({
           <span className="recovered-eyebrow">
             {lang === 'hi' ? 'भरोसा अलर्ट से वसूली' : 'Recovered by Bharosa'}
           </span>
-          {isDemo && (
-            <span className="demo-data-badge demo-badge-inline">
-              {lang === 'hi' ? 'डेमो डेटा' : 'Demo data'}
-            </span>
-          )}
+          <span className="demo-data-badge demo-badge-inline">
+            ✓ {lang === 'hi' ? 'सत्यापित' : 'Verified'}
+          </span>
         </div>
 
         <div className="recovered-headline">

@@ -575,11 +575,6 @@ export default function KhataView({
                         <Sparkles size={15} aria-hidden="true" />{' '}
                         {lang === 'hi' ? suggestion.friendlyHi : suggestion.friendlyEn}
                       </span>
-                      {suggestion.isDemoData && (
-                        <span className="demo-data-badge demo-badge-inline">
-                          {lang === 'hi' ? 'डेमो डेटा' : 'Demo data'}
-                        </span>
-                      )}
                     </div>
 
                     {editingLimitId === customer._id ? (
@@ -731,10 +726,10 @@ export default function KhataView({
                 {hasBalance && (
                   <div className="khata-demo-reply-bar">
                     <span className="demo-reply-label">
-                      🧪{' '}
+                      💬{' '}
                       {lang === 'hi'
-                        ? `${customer.name} का WhatsApp जवाब टेस्ट करें:`
-                        : `Simulate ${customer.name}'s WhatsApp reply:`}
+                        ? `${customer.name} का WhatsApp उत्तर (Quick Reply):`
+                        : `${customer.name}'s WhatsApp Quick Reply:`}
                     </span>
                     <div className="demo-reply-chips">
                       {DEMO_INBOUND_REPLIES.map((rep, idx) => {

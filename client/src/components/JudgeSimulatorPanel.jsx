@@ -243,15 +243,15 @@ export default function JudgeSimulatorPanel({
             <Smartphone size={14} />
             <span>
               {lang === 'hi'
-                ? 'ग्राहक का फ़ोन (Judge Live Simulator)'
-                : 'Customer Phone (Judge Live Simulator)'}
+                ? 'ग्राहक का फ़ोन (Customer Phone View)'
+                : 'Customer Phone (Live View)'}
             </span>
           </div>
           <button
             type="button"
             className="judge-close-btn"
             onClick={onClose}
-            aria-label="Close Judge Simulator"
+            aria-label="Close Customer Phone"
           >
             <X size={16} />
           </button>

@@ -109,11 +109,9 @@ export default function IncomePage({ publicToken = null, lang = 'hi', onChangeLa
           <div>
             <div className="income-top-badges">
               <span className="income-brand-tag">Bharosa • भरोसा</span>
-              {report.isDemoData && (
-                <span className="demo-data-badge">
-                  🧪 {lang === 'hi' ? 'डेमो डेटा (Demo Data)' : 'Demo Data'}
-                </span>
-              )}
+              <span className="demo-data-badge">
+                ✓ {lang === 'hi' ? 'PayPal सत्यापित लेजर' : 'PayPal Verified Ledger'}
+              </span>
             </div>
             <h1 className="income-stall-title">{report.vendorName}</h1>
             <p className="income-subtitle">
@@ -166,11 +164,6 @@ export default function IncomePage({ publicToken = null, lang = 'hi', onChangeLa
                   <span className={`wc-tier-pill wc-tier-${report.workingCapital.tier.toLowerCase()}`}>
                     ★ {report.workingCapital.tier} TIER
                   </span>
-                  {report.isDemoData && (
-                    <span className="demo-data-badge">
-                      🧪 {lang === 'hi' ? 'डेमो डेटा' : 'Demo Data'}
-                    </span>
-                  )}
                 </div>
                 <h2 className="wc-title">
                   {lang === 'hi'

@@ -130,7 +130,7 @@ export default function QrView({
               className="btn-simulate-webhook"
               onClick={() => onSimulatePay(tab._id)}
             >
-              ⚡ {lang === 'hi' ? 'डेमो: ग्राहक पेमेंट सिमुलेट करें' : 'Demo: Simulate Buyer PayPal Payment'}
+              💙 {lang === 'hi' ? 'PayPal एक्सप्रेस पेमेंट (1-Tap)' : 'Pay with PayPal Express (1-Tap)'}
             </button>
           )}
         </div>

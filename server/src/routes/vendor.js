@@ -1,6 +1,7 @@
 import express from 'express';
 import { Vendor, Tab } from '../models/index.js';
 import { emitSocketEvent } from '../sockets.js';
+import { cleanSlateForRecording } from '../services/seed.js';
 
 const router = express.Router();
 
@@ -614,6 +615,7 @@ router.post('/register', async (req, res) => {
       `PPMERCHANT-IN-${Date.now().toString(36).toUpperCase().slice(-6)}`;
     vendor.paypalConnected = true;
     vendor.onboardingCompleted = true;
+    vendor.isDemoSeeded = false;
 
     const chosenItems =
       Array.isArray(items) && items.length > 0
@@ -634,6 +636,9 @@ router.post('/register', async (req, res) => {
     }
 
     await vendor.save();
+    if (req.body?.startFresh !== false) {
+      await cleanSlateForRecording();
+    }
     emitSocketEvent('vendor:updated', { vendor });
 
     return res.json({

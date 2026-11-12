@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Tab } from '../models/index.js';
 import { applyVerifiedPayment } from '../services/paymentProcessor.js';
 import { processInboundCustomerMessage } from '../services/collector.js';
-import { resetPitchState } from '../services/seed.js';
+import { resetPitchState, cleanSlateForRecording } from '../services/seed.js';
 
 const router = express.Router();
 
@@ -112,11 +112,30 @@ router.post('/pitch-reset', async (req, res) => {
     return res.json({
       ok: true,
       ...info,
-      spokenEn: 'Demo reset complete! Ready for the 90 second judge pitch.',
-      spokenHi: 'जज डेमो के लिए ऐप तैयार है! 2 चाट, 1 चाय का नया ऑर्डर और राजू का खाता सेट हो गया है।',
+      spokenEn: 'Workspace ready.',
+      spokenHi: 'नया शिफ्ट डेटा तैयार है।',
     });
   } catch (err) {
     console.error('[POST /api/dev/pitch-reset] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/dev/clean-slate
+ * Wipes all pre-seeded/old orders, messages, and reminders so the stall starts at ₹0 (Order #1).
+ */
+router.post('/clean-slate', async (req, res) => {
+  try {
+    const info = await cleanSlateForRecording();
+    return res.json({
+      ok: true,
+      ...info,
+      spokenEn: 'New shift started. Ready for your first order!',
+      spokenHi: 'नया दिन शुरू! पहला ऑर्डर बोलकर या टैप कर बनाएं।',
+    });
+  } catch (err) {
+    console.error('[POST /api/dev/clean-slate] Error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

@@ -305,34 +305,6 @@ export default function VendorOnboardingModal({
           </button>
         </div>
 
-        {/* 1-Click Judge Quick Bypass Banner */}
-        <div className="onboarding-judge-bypass">
-          <div>
-            <strong>
-              ⚡ {lang === 'hi' ? 'जज क्विक डेमो एक्सेस:' : 'Judge Quick Demo Access:'}
-            </strong>
-            <span>
-              {lang === 'hi'
-                ? 'बिना फॉर्म भरे सीधे प्री-सीडेड स्टॉल पर जाएं'
-                : 'Skip registration and continue with the pre-seeded stall'}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="onboarding-bypass-btn"
-            onClick={() => {
-              try {
-                localStorage.setItem('bharosa_onboarded', '1');
-              } catch {
-                // ignore
-              }
-              onClose();
-            }}
-          >
-            {lang === 'hi' ? 'सीधे स्टॉल खोलें ▸' : 'Skip to Live Stall ▸'}
-          </button>
-        </div>
-
         {/* 3-Step Progress Bar */}
         <div className="onboarding-steps-bar" role="tablist">
           <button

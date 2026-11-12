@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { Vendor, Customer, Tab, Message } from '../models/index.js';
+import { Vendor, Customer, Tab, Message, Reminder, CustomerPromise } from '../models/index.js';
 
 export const DEFAULT_MENU = [
   { name: 'Chaat', emoji: '🍲', aliases: ['chaat', 'chat', 'samosa chaat', 'aloo chaat', 'चाट'], price: 40 },
@@ -11,9 +11,9 @@ export const DEFAULT_MENU = [
 ];
 
 export const DEFAULT_CUSTOMERS = [
-  { name: 'Raju', phone: '+919876543210', whatsappConsent: true, creditLimit: 300, isDemoSeeded: true },
-  { name: 'Sunita', phone: '+919876543211', whatsappConsent: true, creditLimit: 400, isDemoSeeded: true },
-  { name: 'Amit', phone: '+919876543212', whatsappConsent: false, creditLimit: null, isDemoSeeded: true },
+  { name: 'Raju', phone: '+919876543210', whatsappConsent: true, creditLimit: 300, isDemoSeeded: false },
+  { name: 'Sunita', phone: '+919876543211', whatsappConsent: true, creditLimit: 400, isDemoSeeded: false },
+  { name: 'Amit', phone: '+919876543212', whatsappConsent: true, creditLimit: 300, isDemoSeeded: false },
 ];
 
 export async function ensureSeedData() {
@@ -23,15 +23,18 @@ export async function ensureSeedData() {
       name: 'Sharma Ji Chaat & Chai Stall',
       language: 'hi',
       shareToken: crypto.randomBytes(16).toString('hex'),
-      isDemoSeeded: true,
+      isDemoSeeded: false,
       adaptiveAlertsEnabled: true,
       menu: DEFAULT_MENU,
     });
-    console.log('[Seed] Created default Vendor with street-stall menu');
   } else {
     let changed = false;
     if (!vendor.shareToken) {
-      vendor.shareToken = crypto.randomBytes(16).toString('hex');
+      vendor.shareToken = crypto.randomBytes(16).toString('hex'),
+      changed = true;
+    }
+    if (vendor.isDemoSeeded) {
+      vendor.isDemoSeeded = false;
       changed = true;
     }
     if (vendor.adaptiveAlertsEnabled === undefined) {
@@ -49,222 +52,34 @@ export async function ensureSeedData() {
   }
 
   const customerCount = await Customer.countDocuments();
-  let customers = [];
   if (customerCount === 0) {
-    customers = await Customer.insertMany(DEFAULT_CUSTOMERS);
-    console.log('[Seed] Created default regular customers (Raju, Sunita, Amit)');
+    await Customer.insertMany(DEFAULT_CUSTOMERS);
   } else {
-    customers = await Customer.find();
+    await Customer.updateMany({ isDemoSeeded: true }, { $set: { isDemoSeeded: false } });
   }
 
-  // Seed realistic 7-day historical tabs:
-  // - All 7 local calendar days populated
-  // - Enough PAY_NOW PayPal samples in Evening Rush (18:00-21:00, >=15 samples, ~38s p90 -> 45s alert)
-  //   and Morning (07:00-11:00, >=15 samples, ~18s p90 -> 22s alert) to demonstrate Adaptive Alert Timing
-  // - Recovered-after-alert orders & Raju's repeated "usual" orders (2x Chaat + 1x Chai = ₹100)
-  const tabCount = await Tab.countDocuments();
-  if (tabCount === 0) {
-    const raju = customers.find((c) => c.name === 'Raju') || customers[0];
-    const sunita = customers.find((c) => c.name === 'Sunita') || customers[1];
-    const now = new Date();
-    const historicalTabs = [];
-    let num = 1;
-
-    const dailySamples = [
-      { daysAgo: 6, eveningPayNow: [40, 60, 40], morningPayNow: [20, 40, 20], rajuKhataPaid: 100, cashOrders: [40], recoveredIdx: 0 },
-      { daysAgo: 5, eveningPayNow: [40, 80, 40], morningPayNow: [40, 20, 40], rajuKhataPaid: 100, cashOrders: [30], recoveredIdx: 1 },
-      { daysAgo: 4, eveningPayNow: [60, 40, 40], morningPayNow: [20, 40], rajuKhataPaid: 0, cashOrders: [50], recoveredIdx: -1 },
-      { daysAgo: 3, eveningPayNow: [40, 60, 40], morningPayNow: [40, 20, 20], rajuKhataPaid: 100, cashOrders: [40], recoveredIdx: 0 },
-      { daysAgo: 2, eveningPayNow: [40, 80, 40], morningPayNow: [20, 40], rajuKhataPaid: 0, cashOrders: [30], recoveredIdx: 1 },
-      { daysAgo: 1, eveningPayNow: [60, 40, 40], morningPayNow: [40, 20, 40], rajuKhataPaid: 100, cashOrders: [50], recoveredIdx: 0 },
-      { daysAgo: 0, eveningPayNow: [], morningPayNow: [40, 40], rajuKhataPaid: 0, cashOrders: [40], recoveredIdx: 0 },
-    ];
-
-    const eveningDurationsSec = [30, 33, 35, 36, 37, 38, 38, 34, 32, 36, 37, 38, 35, 39, 34, 37, 38, 36];
-    const morningDurationsSec = [13, 15, 16, 17, 18, 18, 15, 14, 17, 18, 16, 19, 15, 17, 18, 16, 17];
-    let eveCursor = 0;
-    let mornCursor = 0;
-
-    for (const sample of dailySamples) {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      const d = now.getDate() - sample.daysAgo;
-
-      // 1. Morning PAY_NOW PayPal orders (08:30 local time)
-      sample.morningPayNow.forEach((amt, idx) => {
-        const baseMorning = new Date(y, m, d, 8, 15 + idx * 7, 0, 0);
-        const dt =
-          sample.daysAgo === 0 && baseMorning.getTime() > now.getTime() - 120000
-            ? new Date(now.getTime() - (35 - idx * 5) * 60 * 1000)
-            : baseMorning;
-
-        const durSec = morningDurationsSec[mornCursor % morningDurationsSec.length];
-        mornCursor++;
-        const wasRecovered = sample.daysAgo === 0 && idx === sample.recoveredIdx;
-        const alertedAt = wasRecovered ? new Date(dt.getTime() + 31000) : null;
-        const paidAt = wasRecovered
-          ? new Date(dt.getTime() + 48000)
-          : new Date(dt.getTime() + durSec * 1000);
-
-        historicalTabs.push({
-          number: num,
-          items: [{ name: 'Chai', qty: Math.max(1, Math.round(amt / 20)), unitPrice: 20 }],
-          amount: amt,
-          currency: 'INR',
-          status: 'PAID',
-          mode: 'PAY_NOW',
-          paymentMethod: 'PAYPAL',
-          alertAfterSeconds: 22,
-          paypal: {
-            orderId: `SEED-PP-ORD-${num}`,
-            captureId: `SEED-PP-CAP-${num}`,
-            paidAmount: amt,
-          },
-          createdAt: dt,
-          alertedAt,
-          paidAt,
-        });
-        num++;
-      });
-
-      // 2. Evening Rush PAY_NOW PayPal orders (19:00 local time, 18-21 bucket)
-      sample.eveningPayNow.forEach((amt, idx) => {
-        const dt = new Date(y, m, d, 19, 5 + idx * 8, 0, 0);
-        const durSec = eveningDurationsSec[eveCursor % eveningDurationsSec.length];
-        eveCursor++;
-        const wasRecovered = idx === sample.recoveredIdx;
-        const alertedAt = wasRecovered ? new Date(dt.getTime() + 30000) : null;
-        const paidAt = wasRecovered
-          ? new Date(dt.getTime() + 44000)
-          : new Date(dt.getTime() + durSec * 1000);
-
-        historicalTabs.push({
-          number: num,
-          items: [{ name: 'Chaat', qty: Math.max(1, Math.round(amt / 40)), unitPrice: 40 }],
-          amount: amt,
-          currency: 'INR',
-          status: 'PAID',
-          mode: 'PAY_NOW',
-          paymentMethod: 'PAYPAL',
-          alertAfterSeconds: 45,
-          paypal: {
-            orderId: `SEED-PP-ORD-${num}`,
-            captureId: `SEED-PP-CAP-${num}`,
-            paidAmount: amt,
-          },
-          createdAt: dt,
-          alertedAt,
-          paidAt,
-        });
-        num++;
-      });
-
-      // 3. Raju's settled KHATA orders (gives Raju a "usual" of 2x Chaat + 1x Chai = ₹100 and fast 1-day repayment history)
-      if (raju && sample.rajuKhataPaid > 0) {
-        const dt = new Date(y, m, d, 13, 0, 0, 0);
-        historicalTabs.push({
-          number: num,
-          items: [
-            { name: 'Chaat', qty: 2, unitPrice: 40 },
-            { name: 'Chai', qty: 1, unitPrice: 20 },
-          ],
-          amount: 100,
-          currency: 'INR',
-          status: 'PAID',
-          mode: 'KHATA',
-          customerId: raju._id,
-          paymentMethod: 'PAYPAL',
-          paypal: {
-            orderId: `SEED-PP-ORD-${num}`,
-            captureId: `SEED-PP-CAP-${num}`,
-            paidAmount: 100,
-          },
-          createdAt: dt,
-          paidAt: new Date(dt.getTime() + 24 * 3600 * 1000),
-        });
-        num++;
-      }
-
-      // 4. Cash orders
-      sample.cashOrders.forEach((amt, idx) => {
-        const baseNoon = new Date(y, m, d, 12, 30 + idx * 10, 0, 0);
-        const dt =
-          sample.daysAgo === 0 && baseNoon.getTime() > now.getTime() - 60000
-            ? new Date(now.getTime() - 20 * 60 * 1000)
-            : baseNoon;
-
-        historicalTabs.push({
-          number: num,
-          items: [{ name: 'Samosa', qty: 2, unitPrice: 15 }],
-          amount: amt,
-          currency: 'INR',
-          status: 'PAID',
-          mode: sunita && idx === 0 ? 'KHATA' : 'PAY_NOW',
-          customerId: sunita && idx === 0 ? sunita._id : null,
-          paymentMethod: 'CASH',
-          createdAt: dt,
-          paidAt: new Date(dt.getTime() + 10000),
-        });
-        num++;
-      });
-    }
-
-    // Add 1 active Khata tab for Raju (₹160) so partial-now ("abhi 100 de raha hoon") and promise-date ("Friday ko de dunga") demos work immediately
-    if (raju) {
-      const rajuOpenTab = {
-        number: num++,
-        items: [
-          { name: 'Chaat', qty: 3, unitPrice: 40 },
-          { name: 'Chai', qty: 2, unitPrice: 20 },
-        ],
-        amount: 160,
-        currency: 'INR',
-        status: 'KHATA',
-        mode: 'KHATA',
-        customerId: raju._id,
-        createdAt: new Date(now.getTime() - 2 * 3600 * 1000),
-      };
-      historicalTabs.push(rajuOpenTab);
-    }
-
-    // Add 1 active Khata tab for Sunita (₹90)
-    if (sunita) {
-      historicalTabs.push({
-        number: num++,
-        items: [
-          { name: 'Lassi', qty: 1, unitPrice: 50 },
-          { name: 'Chaat', qty: 1, unitPrice: 40 },
-        ],
-        amount: 90,
-        currency: 'INR',
-        status: 'KHATA',
-        mode: 'KHATA',
-        customerId: sunita._id,
-        createdAt: new Date(now.getTime() - 4 * 3600 * 1000),
-      });
-    }
-
-    await Tab.insertMany(historicalTabs);
-
-    // Seed an initial outbound reminder message for Raju so his conversation thread is ready
-    const msgCount = await Message.countDocuments();
-    if (msgCount === 0 && raju) {
-      await Message.create({
-        customerId: raju._id,
-        direction: 'OUT',
-        body: 'नमस्ते राजू जी! 🙏 शर्मा जी चाट स्टॉल से याद दिला रहे हैं — आपका ₹160 (3x Chaat, 2x Chai) खाता बाकी है।',
-        twilioSid: 'SM_SEED_OUT_1',
-        createdAt: new Date(now.getTime() - 45 * 60 * 1000),
-      });
-    }
-
-    console.log(`[Seed] Seeded ${historicalTabs.length} demo tabs across 7 days (with adaptive timing & khata history)`);
-  } else {
-    // Ensure any legacy USD tabs are migrated to INR
-    await Tab.updateMany({ currency: 'USD' }, { $set: { currency: 'INR' } });
-  }
-
+  await Tab.updateMany({ currency: 'USD' }, { $set: { currency: 'INR' } });
   return vendor;
+}
+
+/**
+ * Wipes all pre-seeded/old orders, messages, promises, and reminders so the stall
+ * starts 100% clean and unseeded (Order #1, ₹0 Collected/Pending/Khata) for live pitch recording.
+ */
+export async function cleanSlateForRecording() {
+  await ensureSeedData();
+  await Promise.all([
+    Tab.deleteMany({}),
+    Message.deleteMany({}),
+    Reminder.deleteMany({}),
+    CustomerPromise.deleteMany({}),
+    Customer.updateMany(
+      {},
+      { $set: { isDemoSeeded: false, collectorStatus: 'NONE', collectorNote: '' } }
+    ),
+    Vendor.updateMany({}, { $set: { isDemoSeeded: false } }),
+  ]);
+  return { cleaned: true };
 }
 
 /**
