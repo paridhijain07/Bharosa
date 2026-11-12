@@ -59,8 +59,12 @@ router.post('/parse', async (req, res) => {
 
     const vendor = await Vendor.findOne();
     const customers = await Customer.find();
-    const activeMenu =
-      vendor?.menu && vendor.menu.length > 0 ? vendor.menu : DEFAULT_MENU;
+    const vendorMenu = vendor?.menu && vendor.menu.length > 0 ? vendor.menu : [];
+    const existingNames = new Set(vendorMenu.map((m) => m.name.toLowerCase()));
+    const activeMenu = [
+      ...vendorMenu,
+      ...DEFAULT_MENU.filter((d) => !existingNames.has(d.name.toLowerCase())),
+    ];
     const result = await parseVoiceOrder(parsedInput.data.text, activeMenu, customers);
 
     // Resolve customerId if customerName matched a known customer

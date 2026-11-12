@@ -141,21 +141,28 @@ function normalizeSpokenTranscript(raw = '') {
     .replace(/आधा/g, ' 1 ')
     // Normalize Devanagari food & stall words
     .replace(/चाटें|चाट|चैट/g, ' chaat ')
-    .replace(/मसाला\s*चाय|चाय|टी/g, ' chai ')
+    .replace(/मसाला\s*चाय|चाय/g, ' chai ')
     .replace(/समोसे|समोसा/g, ' samosa ')
     .replace(/लस्सी/g, ' lassi ')
     .replace(/वड़ा\s*पाव|बड़ा\s*पाव|वड़ापाव/g, ' vada pav ')
     .replace(/कचौरी|कचौड़ी|कचोरी/g, ' kachori ')
     .replace(/मसाला\s*डोसा|डोसा/g, ' masala dosa ')
-    .replace(/कोल्ड\s*कॉफी|कॉफी/g, ' cold coffee ')
+    .replace(/कोल्ड\s*कॉफी/g, ' cold coffee ')
+    .replace(/कॉफी/g, ' coffee ')
     .replace(/मैगी|नूडल्स/g, ' maggi ')
-    .replace(/पनीर\s*रोल|रोल/g, ' paneer roll ')
+    .replace(/पनीर\s*रोल/g, ' paneer roll ')
     .replace(/वेज\s*सैंडविच|सैंडविच/g, ' veg sandwich ')
-    .replace(/आइस्ड\s*टी|लेमन\s*टी/g, ' iced tea ')
+    .replace(/आइस्ड\s*टी/g, ' iced tea ')
+    .replace(/लेमन\s*टी/g, ' lemon tea ')
+    .replace(/जिंजर\s*टी|अदरक\s*चाय/g, ' ginger tea ')
     .replace(/मैंगो\s*शेक/g, ' mango shake ')
     .replace(/बनाना\s*शेक/g, ' banana shake ')
+    .replace(/ओरियो\s*शेक|ओरियो/g, ' oreo ')
+    .replace(/किटकैट\s*शेक|किटकैट/g, ' kit kat ')
+    .replace(/स्ट्रॉबेरी\s*शेक|स्ट्रॉबेरी/g, ' strawberry ')
     .replace(/गन्ने\s*का\s*रस|गन्ना\s*जूस/g, ' sugarcane juice ')
-    .replace(/नींबू\s*पानी|शिकंजी/g, ' nimbu pani ')
+    .replace(/नींबू\s*पानी|शिकंजी/g, ' shikanji ')
+    .replace(/जलजीरा/g, ' jaljeera ')
     .replace(/नारियल\s*पानी/g, ' coconut water ')
     .replace(/राजू/g, ' raju ')
     .replace(/सुनीता/g, ' sunita ')
@@ -165,22 +172,15 @@ function normalizeSpokenTranscript(raw = '') {
     .replace(/रोज़\s*वाला|रोज\s*वाला|हमेशा\s*वाला/g, ' roz wala ')
     // Normalize ASCII English homophones & Web Speech API mis-transcriptions
     .replace(/\b(chart|charts|chat|chhat|chath|chats)\b/gi, 'chaat')
-    .replace(/\b(chay|chaai|chaye|try|tie|tea)\b/gi, 'chai')
+    .replace(/\b(chay|chaai|chaye|try|tie)\b/gi, 'chai')
     .replace(/\b(samosas|samoosa|samose|some\s*osa)\b/gi, 'samosa')
     .replace(/\b(lassie|lasi|lacy)\b/gi, 'lassi')
     .replace(/\b(vada\s*pao|wada\s*pav|wada\s*pao|bada\s*pav)\b/gi, 'vada pav')
     .replace(/\b(kachodi|kachauri|kachoris)\b/gi, 'kachori')
-    .replace(/\b(masala\s*dose|masala\s*dossa|dossa|dose)\b/gi, 'masala dosa')
-    .replace(/\b(cold\s*copy|coffee)\b/gi, 'cold coffee')
+    .replace(/\b(masala\s*dose|masala\s*dossa|dossa)\b/gi, 'masala dosa')
+    .replace(/\b(cold\s*copy)\b/gi, 'cold coffee')
     .replace(/\b(maggie|magi)\b/gi, 'maggi')
-    .replace(/\b(paneer\s*role|frankie)\b/gi, 'paneer roll')
-    .replace(/\b(sandwich)\b/gi, 'veg sandwich')
-    .replace(/\b(iced\s*tea|ice\s*tea)\b/gi, 'iced tea')
-    .replace(/\b(mango\s*shake)\b/gi, 'mango shake')
-    .replace(/\b(banana\s*shake)\b/gi, 'banana shake')
-    .replace(/\b(sugarcane\s*juice)\b/gi, 'sugarcane juice')
-    .replace(/\b(nimbu\s*pani)\b/gi, 'nimbu pani')
-    .replace(/\b(coconut\s*water)\b/gi, 'coconut water')
+    .replace(/\b(paneer\s*role)\b/gi, 'paneer roll')
     .replace(/\b(raju's|rajus)\b/gi, 'raju')
     .replace(/\b(sunita's)\b/gi, 'sunita')
     .replace(/\b(amit's)\b/gi, 'amit')
@@ -421,63 +421,114 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
     };
   }
 
-  // Match menu items and quantities
+  // Match menu items and quantities (longest phrase first, filtering out ambiguous single-word aliases)
   const matchedItems = [];
   const tokens = lower
     .replace(/[.,!?]/g, ' ')
     .split(/\s+/)
     .filter(Boolean);
 
+  // Count how many menu items share each single-word token
+  const wordItemCount = new Map();
   for (const menuItem of menu) {
-    const allNames = [
-      menuItem.name.toLowerCase(),
-      ...(menuItem.aliases || []).map((a) => a.toLowerCase()),
+    const rawWords = new Set(
+      [menuItem.name, ...(menuItem.aliases || [])]
+        .join(' ')
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+    );
+    for (const w of rawWords) {
+      wordItemCount.set(w, (wordItemCount.get(w) || 0) + 1);
+    }
+  }
+
+  // Build candidate (menuItem, alias) pairs
+  const candidates = [];
+  for (const menuItem of menu) {
+    const canonLower = menuItem.name.toLowerCase().trim();
+    const rawAliases = [
+      canonLower,
+      ...(menuItem.aliases || []).map((a) => String(a).toLowerCase().trim()),
     ];
-    allNames.sort((a, b) => b.length - a.length);
+    // Add tea/chai synonym when menu item is exact 'tea' or 'chai'
+    if (canonLower === 'tea') rawAliases.push('chai');
+    if (canonLower === 'chai') rawAliases.push('tea');
 
-    for (const alias of allNames) {
-      const aliasIdx = lower.indexOf(alias);
-      if (aliasIdx !== -1) {
-        if (matchedItems.some((m) => m.name === menuItem.name)) break;
-
-        const beforeText = lower.slice(0, aliasIdx).trim();
-        const beforeTokens = beforeText.split(/\s+/).filter(Boolean);
-        const prevWord = beforeTokens[beforeTokens.length - 1];
-        const prevPrevWord = beforeTokens[beforeTokens.length - 2];
-
-        const afterText = lower.slice(aliasIdx + alias.length).trim();
-        const afterTokens = afterText.split(/\s+/).filter(Boolean);
-        const nextWord = afterTokens[0];
-
-        let qty = 1;
-        if (prevWord && HINDI_NUMERALS[prevWord] !== undefined) {
-          qty = HINDI_NUMERALS[prevWord];
-        } else if (prevWord && /^\d+$/.test(prevWord)) {
-          qty = parseInt(prevWord, 10);
-        } else if (
-          prevWord &&
-          ['plate', 'cup', 'glass', 'piece', 'प्लेट', 'कप', 'गिलास'].includes(prevWord) &&
-          prevPrevWord &&
-          (HINDI_NUMERALS[prevPrevWord] !== undefined || /^\d+$/.test(prevPrevWord))
-        ) {
-          qty =
-            HINDI_NUMERALS[prevPrevWord] !== undefined
-              ? HINDI_NUMERALS[prevPrevWord]
-              : parseInt(prevPrevWord, 10);
-        } else if (nextWord && HINDI_NUMERALS[nextWord] !== undefined) {
-          qty = HINDI_NUMERALS[nextWord];
-        } else if (nextWord && /^\d+$/.test(nextWord)) {
-          qty = parseInt(nextWord, 10);
-        }
-
-        matchedItems.push({
-          name: menuItem.name,
-          qty,
-          unitPrice: menuItem.price,
-          unmatched: false,
-        });
-        break;
+    const uniqueAliases = Array.from(new Set(rawAliases.filter(Boolean)));
+    for (const alias of uniqueAliases) {
+      const isSingleWord = !alias.includes(' ');
+      if (
+        isSingleWord &&
+        alias !== canonLower &&
+        (wordItemCount.get(alias) || 0) > 1
+      ) {
+        // Skip ambiguous single-word alias (e.g. "shake" shared across 10 shakes, or "tea" inside "lemon tea")
+        continue;
       }
+      candidates.push({ menuItem, alias });
+    }
+  }
+
+  // Sort longest/most specific phrase first so "lemon tea" matches before "tea"
+  candidates.sort((a, b) => b.alias.length - a.alias.length);
+
+  let searchableText = ` ${lower} `;
+
+  for (const { menuItem, alias } of candidates) {
+    if (matchedItems.some((m) => m.name === menuItem.name)) continue;
+
+    // Require word boundaries around ASCII aliases so "tea" doesn't match inside "steam"
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = /^[a-z0-9\s/&-]+$/i.test(alias)
+      ? new RegExp(`(?:^|\\s)(${escaped})(?=\\s|$)`, 'i')
+      : new RegExp(`(${escaped})`, 'i');
+
+    const match = searchableText.match(regex);
+    if (match && match.index !== undefined) {
+      const matchStart = match.index + (match[0].length - match[1].length);
+      const beforeText = searchableText.slice(0, matchStart).trim();
+      const beforeTokens = beforeText.split(/\s+/).filter(Boolean);
+      const prevWord = beforeTokens[beforeTokens.length - 1];
+      const prevPrevWord = beforeTokens[beforeTokens.length - 2];
+
+      const afterText = searchableText.slice(matchStart + match[1].length).trim();
+      const afterTokens = afterText.split(/\s+/).filter(Boolean);
+      const nextWord = afterTokens[0];
+
+      let qty = 1;
+      if (prevWord && HINDI_NUMERALS[prevWord] !== undefined) {
+        qty = HINDI_NUMERALS[prevWord];
+      } else if (prevWord && /^\d+$/.test(prevWord)) {
+        qty = parseInt(prevWord, 10);
+      } else if (
+        prevWord &&
+        ['plate', 'cup', 'glass', 'piece', 'प्लेट', 'कप', 'गिलास'].includes(prevWord) &&
+        prevPrevWord &&
+        (HINDI_NUMERALS[prevPrevWord] !== undefined || /^\d+$/.test(prevPrevWord))
+      ) {
+        qty =
+          HINDI_NUMERALS[prevPrevWord] !== undefined
+            ? HINDI_NUMERALS[prevPrevWord]
+            : parseInt(prevPrevWord, 10);
+      } else if (nextWord && HINDI_NUMERALS[nextWord] !== undefined) {
+        qty = HINDI_NUMERALS[nextWord];
+      } else if (nextWord && /^\d+$/.test(nextWord)) {
+        qty = parseInt(nextWord, 10);
+      }
+
+      matchedItems.push({
+        name: menuItem.name,
+        qty,
+        unitPrice: menuItem.price,
+        unmatched: false,
+      });
+
+      // Mask matched span so shorter aliases cannot double-match inside it
+      searchableText =
+        searchableText.slice(0, matchStart) +
+        ' '.repeat(match[1].length) +
+        searchableText.slice(matchStart + match[1].length);
     }
   }
 
