@@ -1,6 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { Tab, Vendor, Customer } from '../models/index.js';
+import { DEFAULT_MENU } from '../services/seed.js';
 import { parseVoiceOrder, resolveUsualOrderFromTabs } from '../services/llm.js';
 import { createPayPalOrder, refundPayPalCapture } from '../services/paypal.js';
 import { resolveAlertSecondsForNewTab } from '../services/alerts.js';
@@ -58,7 +59,9 @@ router.post('/parse', async (req, res) => {
 
     const vendor = await Vendor.findOne();
     const customers = await Customer.find();
-    const result = await parseVoiceOrder(parsedInput.data.text, vendor?.menu || [], customers);
+    const activeMenu =
+      vendor?.menu && vendor.menu.length > 0 ? vendor.menu : DEFAULT_MENU;
+    const result = await parseVoiceOrder(parsedInput.data.text, activeMenu, customers);
 
     // Resolve customerId if customerName matched a known customer
     let matchedCustomer = null;
