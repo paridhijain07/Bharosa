@@ -82,7 +82,7 @@ export function speakText(text, lang = 'hi', vibratePattern = [180, 80, 180]) {
   }
 }
 
-function encodePcmToWavBase64(float32Buffers, sampleRate = 16000) {
+function encodePcmToWavBase64(float32Buffers, sourceSampleRate = 48000, targetSampleRate = 16000) {
   let totalLength = 0;
   for (const b of float32Buffers) totalLength += b.length;
   if (totalLength === 0) return null;
@@ -94,7 +94,21 @@ function encodePcmToWavBase64(float32Buffers, sampleRate = 16000) {
     offset += b.length;
   }
 
-  const buffer = new ArrayBuffer(44 + merged.length * 2);
+  // Downsample to targetSampleRate (16kHz) for compact payload & fast recognition
+  let samples = merged;
+  let finalRate = sourceSampleRate;
+  if (sourceSampleRate > targetSampleRate) {
+    const ratio = sourceSampleRate / targetSampleRate;
+    const newLen = Math.round(merged.length / ratio);
+    samples = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      const idx = Math.min(merged.length - 1, Math.floor(i * ratio));
+      samples[i] = merged[idx];
+    }
+    finalRate = targetSampleRate;
+  }
+
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
   const writeString = (pos, str) => {
     for (let i = 0; i < str.length; i++) {
@@ -103,22 +117,22 @@ function encodePcmToWavBase64(float32Buffers, sampleRate = 16000) {
   };
 
   writeString(0, 'RIFF');
-  view.setUint32(4, 36 + merged.length * 2, true);
+  view.setUint32(4, 36 + samples.length * 2, true);
   writeString(8, 'WAVE');
   writeString(12, 'fmt ');
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true); // PCM
   view.setUint16(22, 1, true); // Mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
+  view.setUint32(24, finalRate, true);
+  view.setUint32(28, finalRate * 2, true);
   view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
   writeString(36, 'data');
-  view.setUint32(40, merged.length * 2, true);
+  view.setUint32(40, samples.length * 2, true);
 
   let bytePos = 44;
-  for (let i = 0; i < merged.length; i++, bytePos += 2) {
-    const s = Math.max(-1, Math.min(1, merged[i]));
+  for (let i = 0; i < samples.length; i++, bytePos += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
     view.setInt16(bytePos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
 
@@ -202,6 +216,7 @@ export function startSpeechRecognition({
       recognition = null;
     }
     stopAudioStream();
+    fetch('/api/tabs/listen-mic/cancel', { method: 'POST' }).catch(() => {});
   };
 
   const finalizeAndSubmit = (textToSubmit) => {
@@ -263,16 +278,43 @@ export function startSpeechRecognition({
     }
   }
 
-  // --- ENGINE 2 & 3: Browser 16kHz PCM WAV Recorder -> Gemini 2.5 Flash + Windows Offline Speech ---
-  const flushWavAndTranscribe = async () => {
-    if (hasFinalResult || isCancelled || isTranscribing || pcmBuffers.length === 0) return;
+  // --- ENGINE 2: Direct Windows OS Microphone Loop (/api/tabs/listen-mic) ---
+  // Works even when browser microphone permissions are blocked or running inside an IDE webview!
+  const runNativeOsMicLoop = async () => {
+    while (!hasFinalResult && !isCancelled) {
+      try {
+        const res = await fetch('/api/tabs/listen-mic', { method: 'POST' });
+        if (hasFinalResult || isCancelled) break;
+        const data = await res.json();
+        if (data?.recognized && data?.transcript?.trim()) {
+          const spoken = data.transcript.trim();
+          onInterim?.(spoken);
+          finalizeAndSubmit(spoken);
+          return;
+        }
+      } catch {
+        break;
+      }
+    }
+  };
+  runNativeOsMicLoop();
+
+  // --- ENGINE 3: Browser Native-Rate AudioContext WAV Recorder -> Gemini 2.5 Flash + Windows Offline Speech ---
+  const flushWavAndTranscribe = async ({ manualStop = false } = {}) => {
+    if (hasFinalResult || isCancelled || isTranscribing || pcmBuffers.length === 0) {
+      if (manualStop && !hasFinalResult && !isCancelled) {
+        cleanupAll();
+        onEnd?.('manual-fallback');
+      }
+      return;
+    }
     isTranscribing = true;
     const buffersToProcess = pcmBuffers;
     pcmBuffers = [];
     stopAudioStream();
 
     try {
-      const wavBase64 = encodePcmToWavBase64(buffersToProcess, recordedSampleRate);
+      const wavBase64 = encodePcmToWavBase64(buffersToProcess, recordedSampleRate, 16000);
       if (!wavBase64 || hasFinalResult || isCancelled) return;
 
       if (!latestTranscript) {
@@ -291,6 +333,9 @@ export function startSpeechRecognition({
       if (data?.recognized && data?.transcript?.trim()) {
         onInterim?.(data.transcript.trim());
         finalizeAndSubmit(data.transcript.trim());
+      } else if (manualStop) {
+        cleanupAll();
+        onEnd?.('manual-fallback');
       } else {
         isTranscribing = false;
         onInterim?.(
@@ -301,6 +346,10 @@ export function startSpeechRecognition({
       }
     } catch {
       isTranscribing = false;
+      if (manualStop) {
+        cleanupAll();
+        onEnd?.('manual-fallback');
+      }
     }
   };
 
@@ -313,7 +362,7 @@ export function startSpeechRecognition({
           autoGainControl: true,
         },
       })
-      .then((stream) => {
+      .then(async (stream) => {
         if (hasFinalResult || isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -322,14 +371,19 @@ export function startSpeechRecognition({
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
 
-        audioCtx = new AudioCtx({ sampleRate: 16000 });
-        recordedSampleRate = audioCtx.sampleRate || 16000;
+        // IMPORTANT: Use native AudioContext sample rate (e.g. 48000 Hz) so Chromium never throws sample-rate mismatch DOMException!
+        audioCtx = new AudioCtx();
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume().catch(() => {});
+        }
+        recordedSampleRate = audioCtx.sampleRate || 48000;
         const source = audioCtx.createMediaStreamSource(stream);
         processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
 
         let hasSpoken = false;
         let spokenChunks = 0;
         let silentChunksAfterSpeech = 0;
+        const silenceThresholdChunks = Math.max(4, Math.round((recordedSampleRate * 1.1) / 4096));
 
         processorNode.onaudioprocess = (event) => {
           if (hasFinalResult || isCancelled || isTranscribing) return;
@@ -342,7 +396,7 @@ export function startSpeechRecognition({
           }
           const rms = Math.sqrt(sumSq / input.length);
 
-          if (rms > 0.015) {
+          if (rms > 0.012) {
             spokenChunks += 1;
             silentChunksAfterSpeech = 0;
             if (spokenChunks >= 2 && !hasSpoken) {
@@ -357,8 +411,7 @@ export function startSpeechRecognition({
             }
           } else if (hasSpoken) {
             silentChunksAfterSpeech += 1;
-            // ~4 chunks at 4096/16000Hz (~1.0s of silence after speech) -> auto-transcribe!
-            if (silentChunksAfterSpeech >= 4) {
+            if (silentChunksAfterSpeech >= silenceThresholdChunks) {
               if (latestTranscript) {
                 finalizeAndSubmit(latestTranscript);
               } else {
@@ -371,8 +424,8 @@ export function startSpeechRecognition({
         source.connect(processorNode);
         processorNode.connect(audioCtx.destination);
       })
-      .catch(() => {
-        // Ignore if mic permission denied
+      .catch((err) => {
+        console.warn('[Mic] Browser getUserMedia unavailable, using Windows OS mic fallback:', err?.message);
       });
   }
 
@@ -381,11 +434,11 @@ export function startSpeechRecognition({
       if (latestTranscript) {
         finalizeAndSubmit(latestTranscript);
       } else if (pcmBuffers.length > 0) {
-        flushWavAndTranscribe();
+        flushWavAndTranscribe({ manualStop: true });
       } else {
         isCancelled = true;
         cleanupAll();
-        onEnd?.();
+        onEnd?.('manual-fallback');
       }
     },
     abort: () => {

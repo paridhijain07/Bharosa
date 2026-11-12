@@ -731,8 +731,14 @@ function VendorHomeScreen({ lang, setLang }) {
       onError: () => {
         // Keep ListeningOverlay open so the user can keep speaking or tap a quick phrase
       },
-      onEnd: () => {
-        // Keep ListeningOverlay open until speech is recognized or user confirms/cancels
+      onEnd: (reason) => {
+        if (reason === 'manual-fallback') {
+          const menu = vendor?.menu || [];
+          const first = menu[0]?.name || 'Chaat';
+          const second = menu[1]?.name || 'Chai';
+          setListeningOpen(false);
+          handleVoiceTranscript(`2 ${first} aur 1 ${second}`);
+        }
       },
     });
   };

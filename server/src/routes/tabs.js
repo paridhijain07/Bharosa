@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { Tab, Vendor, Customer } from '../models/index.js';
 import { DEFAULT_MENU } from '../services/seed.js';
 import { parseVoiceOrder, resolveUsualOrderFromTabs } from '../services/llm.js';
-import { recognizeWavViaWindowsSpeech } from '../services/nativeSpeech.js';
+import {
+  listenViaWindowsSpeech,
+  cancelNativeSpeech,
+  recognizeWavViaWindowsSpeech,
+} from '../services/nativeSpeech.js';
 import { createPayPalOrder, refundPayPalCapture } from '../services/paypal.js';
 import { resolveAlertSecondsForNewTab } from '../services/alerts.js';
 import { markPromisesKeptIfSettled } from '../services/collector.js';
@@ -45,6 +49,40 @@ const PatchTabInputSchema = z.object({
   amount: z.number().min(0).optional(),
   status: z.enum(['CANCELLED']).optional(),
   markCashReceived: z.boolean().optional(),
+});
+
+/**
+ * POST /api/tabs/listen-mic
+ * Listens directly on the Windows hardware microphone (`SetInputToDefaultAudioDevice()`).
+ */
+router.post('/listen-mic', async (req, res) => {
+  try {
+    const vendor = await Vendor.findOne();
+    const customers = await Customer.find();
+    const vendorMenu = vendor?.menu && vendor.menu.length > 0 ? vendor.menu : [];
+    const existingNames = new Set(vendorMenu.map((m) => m.name.toLowerCase()));
+    const activeMenu = [
+      ...vendorMenu,
+      ...DEFAULT_MENU.filter((d) => !existingNames.has(d.name.toLowerCase())),
+    ];
+
+    const speechResult = await listenViaWindowsSpeech({
+      menu: activeMenu,
+      customers,
+      timeoutSec: 6,
+    });
+    if (speechResult?.recognized) {
+      console.log(`[Voice] /listen-mic recognized: "${speechResult.transcript}"`);
+    }
+    return res.json(speechResult);
+  } catch (err) {
+    return res.json({ recognized: false, transcript: '', error: err.message });
+  }
+});
+
+router.post('/listen-mic/cancel', (req, res) => {
+  cancelNativeSpeech();
+  return res.json({ cancelled: true });
 });
 
 /**
