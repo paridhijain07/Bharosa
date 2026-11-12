@@ -82,16 +82,60 @@ export function speakText(text, lang = 'hi', vibratePattern = [180, 80, 180]) {
   }
 }
 
-/**
- * Start a voice recognition capture session (`hi-IN` with `en-IN` fallback).
- * Supports live word-by-word interim results (`onInterim`) and final transcript (`onResult`).
- */
+function encodePcmToWavBase64(float32Buffers, sampleRate = 16000) {
+  let totalLength = 0;
+  for (const b of float32Buffers) totalLength += b.length;
+  if (totalLength === 0) return null;
+
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  for (const b of float32Buffers) {
+    merged.set(b, offset);
+    offset += b.length;
+  }
+
+  const buffer = new ArrayBuffer(44 + merged.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (pos, str) => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(pos + i, str.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + merged.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // Mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, merged.length * 2, true);
+
+  let bytePos = 44;
+  for (let i = 0; i < merged.length; i++, bytePos += 2) {
+    const s = Math.max(-1, Math.min(1, merged[i]));
+    view.setInt16(bytePos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /**
  * Start a hybrid 3-engine voice recognition session:
  * 1. Browser Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
- * 2. Windows Native Offline Speech Recognition (`POST /api/tabs/listen-mic`)
- * 3. Browser `MediaRecorder` + Live Voice Activity Detection + Gemini 2.5 Flash Audio (`POST /api/tabs/transcribe-audio`)
- * Whichever engine recognizes speech first wins and submits immediately.
+ * 2. Browser `AudioContext` 16kHz WAV Recorder + Live Voice Activity Detection -> sends WAV to
+ *    `POST /api/tabs/transcribe-audio` which runs BOTH Gemini 2.5 Flash Audio AND Windows Native Offline Speech (`System.Speech.Recognition`)!
  */
 export function startSpeechRecognition({
   lang = 'hi',
@@ -103,41 +147,25 @@ export function startSpeechRecognition({
 }) {
   let hasFinalResult = false;
   let isCancelled = false;
+  let isTranscribing = false;
   let latestTranscript = '';
   let silenceTimer = null;
   let recognition = null;
   let mediaStream = null;
-  let mediaRecorder = null;
   let audioCtx = null;
-  let vadInterval = null;
-  let audioChunks = [];
+  let processorNode = null;
+  let pcmBuffers = [];
+  let recordedSampleRate = 16000;
 
-  const cleanupAll = () => {
-    if (silenceTimer) {
-      clearTimeout(silenceTimer);
-      silenceTimer = null;
-    }
-    if (vadInterval) {
-      clearInterval(vadInterval);
-      vadInterval = null;
-    }
-    if (recognition) {
+  const stopAudioStream = () => {
+    if (processorNode) {
       try {
-        recognition.onresult = null;
-        recognition.onerror = null;
-        recognition.onend = null;
-        recognition.abort();
+        processorNode.disconnect();
+        processorNode.onaudioprocess = null;
       } catch {
         // ignore
       }
-      recognition = null;
-    }
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      try {
-        mediaRecorder.stop();
-      } catch {
-        // ignore
-      }
+      processorNode = null;
     }
     if (mediaStream) {
       try {
@@ -155,7 +183,25 @@ export function startSpeechRecognition({
       }
       audioCtx = null;
     }
-    fetch('/api/tabs/listen-mic/cancel', { method: 'POST' }).catch(() => {});
+  };
+
+  const cleanupAll = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    if (recognition) {
+      try {
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.abort();
+      } catch {
+        // ignore
+      }
+      recognition = null;
+    }
+    stopAudioStream();
   };
 
   const finalizeAndSubmit = (textToSubmit) => {
@@ -195,7 +241,7 @@ export function startSpeechRecognition({
           if (silenceTimer) clearTimeout(silenceTimer);
           silenceTimer = setTimeout(() => {
             finalizeAndSubmit(latestTranscript);
-          }, 1400);
+          }, 1200);
         }
       };
 
@@ -205,7 +251,6 @@ export function startSpeechRecognition({
           recognition.lang = 'en-IN';
           try {
             recognition.start();
-            return;
           } catch {
             // ignore
           }
@@ -214,158 +259,120 @@ export function startSpeechRecognition({
 
       recognition.start();
     } catch {
-      // Fallback engines 2 & 3 will handle it
+      // Fallback WAV recorder will handle it
     }
   }
 
-  // --- ENGINE 2: Windows Native Offline Speech Recognition (/api/tabs/listen-mic) ---
-  const runNativeLoop = async () => {
-    while (!hasFinalResult && !isCancelled) {
-      try {
-        const res = await fetch('/api/tabs/listen-mic', { method: 'POST' });
-        if (hasFinalResult || isCancelled) break;
-        const data = await res.json();
-        if (data?.recognized && data?.transcript?.trim()) {
-          const spoken = data.transcript.trim();
-          onInterim?.(spoken);
-          finalizeAndSubmit(spoken);
-          return;
-        }
-      } catch {
-        break;
-      }
-    }
-  };
-  runNativeLoop();
+  // --- ENGINE 2 & 3: Browser 16kHz PCM WAV Recorder -> Gemini 2.5 Flash + Windows Offline Speech ---
+  const flushWavAndTranscribe = async () => {
+    if (hasFinalResult || isCancelled || isTranscribing || pcmBuffers.length === 0) return;
+    isTranscribing = true;
+    const buffersToProcess = pcmBuffers;
+    pcmBuffers = [];
+    stopAudioStream();
 
-  // --- ENGINE 3: Browser MediaRecorder + Live Voice Activity Detection + Gemini Audio ---
-  const sendRecordedAudioToGemini = async () => {
-    if (hasFinalResult || isCancelled || audioChunks.length === 0) return;
     try {
-      const mimeType = mediaRecorder?.mimeType || 'audio/webm';
-      const blob = new Blob(audioChunks, { type: mimeType });
-      if (blob.size < 800) return;
+      const wavBase64 = encodePcmToWavBase64(buffersToProcess, recordedSampleRate);
+      if (!wavBase64 || hasFinalResult || isCancelled) return;
 
       if (!latestTranscript) {
         onInterim?.(
-          lang === 'hi' ? '🎙️ AI आपकी आवाज़ समझ रहा है...' : '🎙️ Processing your voice...'
+          lang === 'hi' ? '🎙️ AI आपकी आवाज़ समझ रहा है...' : '🎙️ Recognizing your voice...'
         );
       }
-
-      const base64Audio = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
-
-      if (hasFinalResult || isCancelled || !base64Audio) return;
 
       const res = await fetch('/api/tabs/transcribe-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioBase64: base64Audio, mimeType }),
+        body: JSON.stringify({ audioBase64: wavBase64, mimeType: 'audio/wav' }),
       });
       if (hasFinalResult || isCancelled) return;
       const data = await res.json();
       if (data?.recognized && data?.transcript?.trim()) {
         onInterim?.(data.transcript.trim());
         finalizeAndSubmit(data.transcript.trim());
+      } else {
+        isTranscribing = false;
+        onInterim?.(
+          lang === 'hi'
+            ? '🎙️ आवाज़ साफ़ नहीं आई — फिर से बोलें या नीचे टैप करें'
+            : '🎙️ Could not hear clearly — speak again or tap a phrase below'
+        );
       }
     } catch {
-      // ignore
+      isTranscribing = false;
     }
   };
 
   if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
     navigator.mediaDevices
-      .getUserMedia({ audio: true })
+      .getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       .then((stream) => {
         if (hasFinalResult || isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
         mediaStream = stream;
-        audioChunks = [];
-        const preferredMime =
-          typeof MediaRecorder !== 'undefined' &&
-          MediaRecorder.isTypeSupported?.('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : undefined;
-        mediaRecorder = preferredMime
-          ? new MediaRecorder(stream, { mimeType: preferredMime })
-          : new MediaRecorder(stream);
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
 
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            audioChunks.push(e.data);
+        audioCtx = new AudioCtx({ sampleRate: 16000 });
+        recordedSampleRate = audioCtx.sampleRate || 16000;
+        const source = audioCtx.createMediaStreamSource(stream);
+        processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+
+        let hasSpoken = false;
+        let spokenChunks = 0;
+        let silentChunksAfterSpeech = 0;
+
+        processorNode.onaudioprocess = (event) => {
+          if (hasFinalResult || isCancelled || isTranscribing) return;
+          const input = event.inputBuffer.getChannelData(0);
+          pcmBuffers.push(new Float32Array(input));
+
+          let sumSq = 0;
+          for (let i = 0; i < input.length; i++) {
+            sumSq += input[i] * input[i];
+          }
+          const rms = Math.sqrt(sumSq / input.length);
+
+          if (rms > 0.015) {
+            spokenChunks += 1;
+            silentChunksAfterSpeech = 0;
+            if (spokenChunks >= 2 && !hasSpoken) {
+              hasSpoken = true;
+              if (!latestTranscript) {
+                onInterim?.(
+                  lang === 'hi'
+                    ? '🎙️ आपकी आवाज़ आ रही है... बोलते रहें'
+                    : '🎙️ Hearing your voice... keep speaking'
+                );
+              }
+            }
+          } else if (hasSpoken) {
+            silentChunksAfterSpeech += 1;
+            // ~4 chunks at 4096/16000Hz (~1.0s of silence after speech) -> auto-transcribe!
+            if (silentChunksAfterSpeech >= 4) {
+              if (latestTranscript) {
+                finalizeAndSubmit(latestTranscript);
+              } else {
+                flushWavAndTranscribe();
+              }
+            }
           }
         };
 
-        mediaRecorder.onstop = () => {
-          sendRecordedAudioToGemini();
-        };
-
-        mediaRecorder.start(250);
-
-        // Live Voice Activity Detection (VAD) via Web Audio AnalyserNode
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          audioCtx = new AudioCtx();
-          const source = audioCtx.createMediaStreamSource(stream);
-          const analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 512;
-          source.connect(analyser);
-          const dataArray = new Uint8Array(analyser.fftSize);
-
-          let hasSpoken = false;
-          let spokenFrames = 0;
-          let silentFramesAfterSpeech = 0;
-
-          vadInterval = setInterval(() => {
-            if (hasFinalResult || isCancelled) return;
-            analyser.getByteTimeDomainData(dataArray);
-            let sumSquares = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-              const norm = (dataArray[i] - 128) / 128;
-              sumSquares += norm * norm;
-            }
-            const rms = Math.sqrt(sumSquares / dataArray.length);
-
-            if (rms > 0.022) {
-              spokenFrames += 1;
-              silentFramesAfterSpeech = 0;
-              if (spokenFrames >= 2 && !hasSpoken) {
-                hasSpoken = true;
-                if (!latestTranscript) {
-                  onInterim?.(
-                    lang === 'hi'
-                      ? '🎙️ आपकी आवाज़ आ रही है... बोलते रहें'
-                      : '🎙️ Hearing your voice... keep speaking'
-                  );
-                }
-              }
-            } else if (hasSpoken) {
-              silentFramesAfterSpeech += 1;
-              // 13 frames * 100ms = 1.3s of silence after speaking -> auto-stop & transcribe!
-              if (silentFramesAfterSpeech >= 13) {
-                clearInterval(vadInterval);
-                vadInterval = null;
-                if (latestTranscript) {
-                  finalizeAndSubmit(latestTranscript);
-                } else if (mediaRecorder && mediaRecorder.state === 'recording') {
-                  try {
-                    mediaRecorder.stop();
-                  } catch {
-                    // ignore
-                  }
-                }
-              }
-            }
-          }, 100);
-        }
+        source.connect(processorNode);
+        processorNode.connect(audioCtx.destination);
       })
       .catch(() => {
-        // Ignore if mic stream unavailable; Engine 2 (Windows Native) still listens
+        // Ignore if mic permission denied
       });
   }
 
@@ -373,12 +380,8 @@ export function startSpeechRecognition({
     stop: () => {
       if (latestTranscript) {
         finalizeAndSubmit(latestTranscript);
-      } else if (mediaRecorder && mediaRecorder.state === 'recording') {
-        try {
-          mediaRecorder.stop();
-        } catch {
-          cleanupAll();
-        }
+      } else if (pcmBuffers.length > 0) {
+        flushWavAndTranscribe();
       } else {
         isCancelled = true;
         cleanupAll();

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Tab, Vendor, Customer } from '../models/index.js';
 import { DEFAULT_MENU } from '../services/seed.js';
 import { parseVoiceOrder, resolveUsualOrderFromTabs } from '../services/llm.js';
-import { listenViaWindowsSpeech, cancelNativeSpeech } from '../services/nativeSpeech.js';
+import { recognizeWavViaWindowsSpeech } from '../services/nativeSpeech.js';
 import { createPayPalOrder, refundPayPalCapture } from '../services/paypal.js';
 import { resolveAlertSecondsForNewTab } from '../services/alerts.js';
 import { markPromisesKeptIfSettled } from '../services/collector.js';
@@ -48,11 +48,20 @@ const PatchTabInputSchema = z.object({
 });
 
 /**
- * POST /api/tabs/listen-mic
- * Native Windows Offline Speech Recognition fallback when browser Web Speech API fails (`network` error).
+ * POST /api/tabs/transcribe-audio
+ * Transcribes recorded microphone WAV/WebM audio using BOTH:
+ * 1. Windows Native Offline Speech (`System.Speech.Recognition` on WAV buffer, ~300ms offline)
+ * 2. Gemini 2.5 Flash Multimodal Audio (full Hindi/Hinglish/English support)
  */
-router.post('/listen-mic', async (req, res) => {
+router.post('/transcribe-audio', async (req, res) => {
   try {
+    const { audioBase64, mimeType } = req.body || {};
+    if (!audioBase64) {
+      return res.json({ recognized: false, transcript: '' });
+    }
+
+    const cleanBase64 = String(audioBase64).replace(/^data:[^;]+;base64,/, '');
+    const audioBuffer = Buffer.from(cleanBase64, 'base64');
     const vendor = await Vendor.findOne();
     const customers = await Customer.find();
     const vendorMenu = vendor?.menu && vendor.menu.length > 0 ? vendor.menu : [];
@@ -61,75 +70,78 @@ router.post('/listen-mic', async (req, res) => {
       ...vendorMenu,
       ...DEFAULT_MENU.filter((d) => !existingNames.has(d.name.toLowerCase())),
     ];
+    const menuNames = activeMenu.map((m) => m.name).join(', ');
 
-    const speechResult = await listenViaWindowsSpeech({
-      menu: activeMenu,
-      customers,
-      timeoutSec: 7,
-    });
-    return res.json(speechResult);
-  } catch (err) {
-    return res.json({ recognized: false, transcript: '', error: err.message });
-  }
-});
+    const isWav = !mimeType || mimeType.includes('wav');
+    const windowsPromise = isWav
+      ? recognizeWavViaWindowsSpeech({
+          wavBuffer: audioBuffer,
+          menu: activeMenu,
+          customers,
+        })
+      : Promise.resolve({ recognized: false, transcript: '' });
 
-router.post('/listen-mic/cancel', (req, res) => {
-  cancelNativeSpeech();
-  return res.json({ cancelled: true });
-});
-
-/**
- * POST /api/tabs/transcribe-audio
- * Transcribes recorded microphone audio (WebM/MP4/WAV) using Gemini 2.5 Flash Multimodal Audio.
- */
-router.post('/transcribe-audio', async (req, res) => {
-  try {
-    const { audioBase64, mimeType } = req.body || {};
     const apiKey = process.env.LLM_API_KEY;
     const model = process.env.LLM_MODEL || 'gemini-2.5-flash';
-    if (!audioBase64 || !apiKey || apiKey.startsWith('your_')) {
-      return res.json({ recognized: false, transcript: '' });
-    }
-
-    const cleanBase64 = String(audioBase64).replace(/^data:[^;]+;base64,/, '');
-    const vendor = await Vendor.findOne();
-    const menuNames = (vendor?.menu || DEFAULT_MENU).map((m) => m.name).join(', ');
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
+    const geminiPromise = (async () => {
+      if (!apiKey || apiKey.startsWith('your_')) {
+        return { recognized: false, transcript: '' };
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4500);
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
               {
-                inlineData: {
-                  mimeType: mimeType || 'audio/webm',
-                  data: cleanBase64,
-                },
-              },
-              {
-                text: `Listen to this spoken order at an Indian food stall (Menu items include: ${menuNames}, Chaat, Chai, Samosa, Lassi, Vada Pav, Kachori). Transcribe what the speaker said into concise Roman Hinglish/English (e.g. "2 chaat aur 1 chai", "2 strawberry shake", "Raju ka khata 2 samosa"). If there is only silence or background noise with no speech, reply with EXACTLY: SILENCE`,
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType || 'audio/wav',
+                      data: cleanBase64,
+                    },
+                  },
+                  {
+                    text: `Listen to this spoken order at an Indian food stall (Menu items include: ${menuNames}). Transcribe what the speaker said into concise Roman Hinglish/English (e.g. "2 chaat aur 1 chai", "2 strawberry shake", "Raju ka khata 2 samosa"). If there is only silence or background noise with no speech, reply with EXACTLY: SILENCE`,
+                  },
+                ],
               },
             ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-        },
-      }),
-    });
+            generationConfig: {
+              temperature: 0.1,
+            },
+          }),
+        });
+        clearTimeout(timeout);
+        if (!response.ok) return { recognized: false, transcript: '' };
+        const data = await response.json();
+        const rawText = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        if (!rawText || rawText.toUpperCase() === 'SILENCE') {
+          return { recognized: false, transcript: '' };
+        }
+        return {
+          recognized: true,
+          transcript: rawText.replace(/^["']|["']$/g, '').trim(),
+          source: 'gemini',
+        };
+      } catch {
+        clearTimeout(timeout);
+        return { recognized: false, transcript: '' };
+      }
+    })();
 
-    if (!response.ok) {
-      return res.json({ recognized: false, transcript: '' });
+    const [winRes, gemRes] = await Promise.all([windowsPromise, geminiPromise]);
+    if (gemRes?.recognized && gemRes.transcript) {
+      return res.json(gemRes);
     }
-    const data = await response.json();
-    const rawText = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!rawText || rawText.toUpperCase() === 'SILENCE') {
-      return res.json({ recognized: false, transcript: '' });
+    if (winRes?.recognized && winRes.transcript) {
+      return res.json({ ...winRes, source: 'windows-offline' });
     }
-    return res.json({ recognized: true, transcript: rawText.replace(/^["']|["']$/g, '').trim() });
+    return res.json({ recognized: false, transcript: '' });
   } catch (err) {
     return res.json({ recognized: false, transcript: '', error: err.message });
   }

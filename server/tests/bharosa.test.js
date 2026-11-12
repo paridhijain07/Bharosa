@@ -10,7 +10,7 @@ import {
   Reminder,
   Vendor,
 } from '../src/models/index.js';
-import { DEFAULT_MENU, DEFAULT_CUSTOMERS } from '../src/services/seed.js';
+import { DEFAULT_MENU, DEFAULT_CUSTOMERS, cleanSlateForRecording } from '../src/services/seed.js';
 import {
   deterministicParseOrder,
   ParsedOrderSchema,
@@ -618,13 +618,7 @@ test('Webhook Payment Processor + Two-Way WhatsApp Collector Pipeline (Mocked LL
     assert.equal(updatedSunita.whatsappConsent, false);
     assert.equal(updatedSunita.collectorStatus, 'OPTED_OUT');
   } finally {
-    await Tab.deleteMany({});
-    await Customer.deleteMany({});
-    await WebhookEvent.deleteMany({});
-    await Message.deleteMany({});
-    await CustomerPromise.deleteMany({});
-    await Reminder.deleteMany({});
-    await Vendor.deleteMany({});
+    await cleanSlateForRecording();
     await mongoose.disconnect();
   }
 });

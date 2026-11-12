@@ -186,6 +186,7 @@ function normalizeSpokenTranscript(raw = '') {
     .replace(/\b(amit's)\b/gi, 'amit')
     .replace(/\b(mohan's)\b/gi, 'mohan')
     .replace(/\b(khate|khatay|udhari)\b/gi, 'khata')
+    .replace(/[.,!?;:()"]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
