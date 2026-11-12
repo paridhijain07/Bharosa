@@ -17,6 +17,7 @@ export default function ListeningOverlay({
   lang = 'hi',
   menu = [],
   onSubmitTranscript,
+  onFinishSpeaking,
   onCancel,
 }) {
   const [manualText, setManualText] = useState('');
@@ -112,36 +113,44 @@ export default function ListeningOverlay({
           )}
         </div>
 
-        {interimTranscript && (
-          <button
-            type="button"
-            onClick={() => handleConfirmSpoken(interimTranscript)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              width: '100%',
-              padding: '12px 18px',
-              marginBottom: '12px',
-              borderRadius: '14px',
-              border: 'none',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
-              color: '#fff',
-              fontSize: '1rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(16, 185, 129, 0.35)',
-            }}
-          >
-            <CheckCircle2 size={20} />
-            <span>
-              {lang === 'hi'
+        <button
+          type="button"
+          onClick={() => {
+            if (interimTranscript && !interimTranscript.startsWith('🎙️')) {
+              handleConfirmSpoken(interimTranscript);
+            } else {
+              onFinishSpeaking?.();
+            }
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '12px 18px',
+            marginBottom: '12px',
+            borderRadius: '14px',
+            border: 'none',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            color: '#fff',
+            fontSize: '1rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            boxShadow: '0 8px 20px rgba(16, 185, 129, 0.35)',
+          }}
+        >
+          <CheckCircle2 size={20} />
+          <span>
+            {interimTranscript && !interimTranscript.startsWith('🎙️')
+              ? lang === 'hi'
                 ? `✓ आगे बढ़ें: "${interimTranscript}"`
-                : `✓ Confirm: "${interimTranscript}"`}
-            </span>
-          </button>
-        )}
+                : `✓ Confirm: "${interimTranscript}"`
+              : lang === 'hi'
+                ? '✓ बोल दिया — ऑर्डर बनाएं (Done Speaking)'
+                : '✓ Done Speaking — Create Order'}
+          </span>
+        </button>
 
         {/* Quick Voice Phrase Chips for instant 1-tap voice recognition or busy mic fallback */}
         <div

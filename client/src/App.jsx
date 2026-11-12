@@ -1778,6 +1778,14 @@ function VendorHomeScreen({ lang, setLang }) {
         lang={lang}
         menu={vendor?.menu || []}
         interimTranscript={interimTranscript}
+        onFinishSpeaking={() => {
+          setInterimTranscript(
+            lang === 'hi' ? '🎙️ AI आपकी आवाज़ समझ रहा है...' : '🎙️ Processing your voice...'
+          );
+          if (recognitionRef.current?.stop) {
+            recognitionRef.current.stop();
+          }
+        }}
         onSubmitTranscript={(txt) => {
           handleCancelVoiceOrder();
           handleVoiceTranscript(txt);

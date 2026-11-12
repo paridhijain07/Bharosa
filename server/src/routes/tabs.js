@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Tab, Vendor, Customer } from '../models/index.js';
 import { DEFAULT_MENU } from '../services/seed.js';
 import { parseVoiceOrder, resolveUsualOrderFromTabs } from '../services/llm.js';
+import { listenViaWindowsSpeech, cancelNativeSpeech } from '../services/nativeSpeech.js';
 import { createPayPalOrder, refundPayPalCapture } from '../services/paypal.js';
 import { resolveAlertSecondsForNewTab } from '../services/alerts.js';
 import { markPromisesKeptIfSettled } from '../services/collector.js';
@@ -44,6 +45,94 @@ const PatchTabInputSchema = z.object({
   amount: z.number().min(0).optional(),
   status: z.enum(['CANCELLED']).optional(),
   markCashReceived: z.boolean().optional(),
+});
+
+/**
+ * POST /api/tabs/listen-mic
+ * Native Windows Offline Speech Recognition fallback when browser Web Speech API fails (`network` error).
+ */
+router.post('/listen-mic', async (req, res) => {
+  try {
+    const vendor = await Vendor.findOne();
+    const customers = await Customer.find();
+    const vendorMenu = vendor?.menu && vendor.menu.length > 0 ? vendor.menu : [];
+    const existingNames = new Set(vendorMenu.map((m) => m.name.toLowerCase()));
+    const activeMenu = [
+      ...vendorMenu,
+      ...DEFAULT_MENU.filter((d) => !existingNames.has(d.name.toLowerCase())),
+    ];
+
+    const speechResult = await listenViaWindowsSpeech({
+      menu: activeMenu,
+      customers,
+      timeoutSec: 7,
+    });
+    return res.json(speechResult);
+  } catch (err) {
+    return res.json({ recognized: false, transcript: '', error: err.message });
+  }
+});
+
+router.post('/listen-mic/cancel', (req, res) => {
+  cancelNativeSpeech();
+  return res.json({ cancelled: true });
+});
+
+/**
+ * POST /api/tabs/transcribe-audio
+ * Transcribes recorded microphone audio (WebM/MP4/WAV) using Gemini 2.5 Flash Multimodal Audio.
+ */
+router.post('/transcribe-audio', async (req, res) => {
+  try {
+    const { audioBase64, mimeType } = req.body || {};
+    const apiKey = process.env.LLM_API_KEY;
+    const model = process.env.LLM_MODEL || 'gemini-2.5-flash';
+    if (!audioBase64 || !apiKey || apiKey.startsWith('your_')) {
+      return res.json({ recognized: false, transcript: '' });
+    }
+
+    const cleanBase64 = String(audioBase64).replace(/^data:[^;]+;base64,/, '');
+    const vendor = await Vendor.findOne();
+    const menuNames = (vendor?.menu || DEFAULT_MENU).map((m) => m.name).join(', ');
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType || 'audio/webm',
+                  data: cleanBase64,
+                },
+              },
+              {
+                text: `Listen to this spoken order at an Indian food stall (Menu items include: ${menuNames}, Chaat, Chai, Samosa, Lassi, Vada Pav, Kachori). Transcribe what the speaker said into concise Roman Hinglish/English (e.g. "2 chaat aur 1 chai", "2 strawberry shake", "Raju ka khata 2 samosa"). If there is only silence or background noise with no speech, reply with EXACTLY: SILENCE`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      return res.json({ recognized: false, transcript: '' });
+    }
+    const data = await response.json();
+    const rawText = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    if (!rawText || rawText.toUpperCase() === 'SILENCE') {
+      return res.json({ recognized: false, transcript: '' });
+    }
+    return res.json({ recognized: true, transcript: rawText.replace(/^["']|["']$/g, '').trim() });
+  } catch (err) {
+    return res.json({ recognized: false, transcript: '', error: err.message });
+  }
 });
 
 /**
