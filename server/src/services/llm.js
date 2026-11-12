@@ -33,49 +33,124 @@ export const CollectorDecisionSchema = z.object({
 const HINDI_NUMERALS = {
   ek: 1,
   एक: 1,
+  वन: 1,
   one: 1,
+  won: 1,
+  a: 1,
+  an: 1,
   '1': 1,
+  '१': 1,
   do: 2,
   दो: 2,
+  टू: 2,
   two: 2,
+  to: 2,
+  too: 2,
+  tu: 2,
+  du: 2,
   '2': 2,
+  '२': 2,
   teen: 3,
   तीन: 3,
+  थ्री: 3,
+  tin: 3,
   three: 3,
+  tree: 3,
   '3': 3,
+  '३': 3,
   chaar: 4,
   char: 4,
   चार: 4,
+  फोर: 4,
   four: 4,
+  for: 4,
   '4': 4,
+  '४': 4,
   paanch: 5,
   panch: 5,
   पांच: 5,
+  पाँच: 5,
+  फाइव: 5,
   five: 5,
   '5': 5,
+  '५': 5,
   chhe: 6,
   che: 6,
   छह: 6,
+  सिक्स: 6,
   six: 6,
   '6': 6,
+  '६': 6,
   saat: 7,
   सात: 7,
+  सेवन: 7,
   seven: 7,
   '7': 7,
+  '७': 7,
   aath: 8,
   आठ: 8,
+  एट: 8,
   eight: 8,
   '8': 8,
+  '८': 8,
   nau: 9,
   नौ: 9,
+  नाइन: 9,
   nine: 9,
   '9': 9,
+  '९': 9,
   das: 10,
   दस: 10,
+  टेन: 10,
   ten: 10,
   '10': 10,
+  '१०': 10,
   aadha: 1,
+  आधा: 1,
+  half: 1,
 };
+
+/**
+ * Normalizes common Web Speech API phonetic mis-transcriptions & Devanagari variants
+ * so spoken Hindi/Hinglish/English orders reliably match menu items and customer names.
+ */
+function normalizeSpokenTranscript(raw = '') {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/१/g, '1')
+    .replace(/२/g, '2')
+    .replace(/३/g, '3')
+    .replace(/४/g, '4')
+    .replace(/५/g, '5')
+    .replace(/६/g, '6')
+    .replace(/७/g, '7')
+    .replace(/८/g, '8')
+    .replace(/९/g, '9')
+    .replace(/०/g, '0')
+    .replace(/\b(chart|charts|chhat|chath|chats|चाट|चैट|चाटें)\b/gi, 'chaat')
+    .replace(/\b(chay|chaai|chaye|try|tie|tea|चाय|टी)\b/gi, 'chai')
+    .replace(/\b(samosas|samoosa|samose|some\s*osa|समोसा|समोसे)\b/gi, 'samosa')
+    .replace(/\b(lassie|lasi|lacy|लस्सी)\b/gi, 'lassi')
+    .replace(/\b(vada\s*pao|wada\s*pav|wada\s*pao|bada\s*pav|वड़ा\s*पाव|बड़ा\s*पाव|वड़ापाव)\b/gi, 'vada pav')
+    .replace(/\b(kachodi|kachauri|kachoris|कचौरी|कचौड़ी|कचोरी)\b/gi, 'kachori')
+    .replace(/\b(masala\s*dose|masala\s*dossa|dossa|dose|डोसा|मसाला\s*डोसा)\b/gi, 'masala dosa')
+    .replace(/\b(cold\s*copy|कोल्ड\s*कॉफी|कॉफी|coffee)\b/gi, 'cold coffee')
+    .replace(/\b(maggie|magi|मैगी|नूडल्स)\b/gi, 'maggi')
+    .replace(/\b(paneer\s*role|पनीर\s*रोल|रोल|frankie)\b/gi, 'paneer roll')
+    .replace(/\b(सैंडविच|sandwich)\b/gi, 'veg sandwich')
+    .replace(/\b(आइस्ड\s*टी|लेमन\s*टी|iced\s*tea|ice\s*tea)\b/gi, 'iced tea')
+    .replace(/\b(मैंगो\s*शेक|mango\s*shake)\b/gi, 'mango shake')
+    .replace(/\b(बनाना\s*शेक|banana\s*shake)\b/gi, 'banana shake')
+    .replace(/\b(गन्ने\s*का\s*रस|गन्ना\s*जूस|sugarcane\s*juice)\b/gi, 'sugarcane juice')
+    .replace(/\b(नींबू\s*पानी|शिकंजी|nimbu\s*pani)\b/gi, 'nimbu pani')
+    .replace(/\b(नारियल\s*पानी|coconut\s*water)\b/gi, 'coconut water')
+    .replace(/\b(राजू|raju's|rajus)\b/gi, 'raju')
+    .replace(/\b(सुनीता|sunita's)\b/gi, 'sunita')
+    .replace(/\b(अमित|amit's)\b/gi, 'amit')
+    .replace(/\b(मोहन|mohan's)\b/gi, 'mohan')
+    .replace(/\b(खाता|खाते|उधार|उधारी|khate|khatay|udhari)\b/gi, 'khata')
+    .replace(/\b(रोज़\s*वाला|रोज\s*वाला|हमेशा\s*वाला)\b/gi, 'roz wala');
+}
 
 function isLlmConfigured() {
   const key = process.env.LLM_API_KEY;
@@ -259,16 +334,16 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
     };
   }
 
-  const lower = raw.toLowerCase();
+  const lower = normalizeSpokenTranscript(raw);
 
   // Detect KHATA mode keywords
   const khataRegex = /\b(khata|khate|udhaar|udhar|credit|account|खाता|उधार)\b/i;
-  const isKhata = khataRegex.test(lower);
+  const isKhata = khataRegex.test(lower) || khataRegex.test(raw);
 
   // Detect "usual" keywords ("roz wala", "usual", "same as yesterday", "hamesha wala", "daily wala")
   const usualRegex =
     /\b(roz\s*wala|roj\s*wala|usual|same\s+as\s+yesterday|hamesha\s*wala|daily\s*wala|रोज़\s*वाला|रोज\s*वाला|हमेशा\s*वाला)\b/i;
-  const isUsual = usualRegex.test(lower);
+  const isUsual = usualRegex.test(lower) || usualRegex.test(raw);
 
   const mode = isKhata ? 'KHATA' : 'PAY_NOW';
 
@@ -282,9 +357,9 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
   }
   if (!customerName && (isKhata || isUsual)) {
     const kaMatch =
-      raw.match(/([a-zA-Z]+)\s+(?:ka|ke|ki)\s+(?:khata|udhaar|udhar|roz|roj|usual|hamesha)/i) ||
-      raw.match(/([a-zA-Z]+)'s\s+usual/i) ||
-      raw.match(/for\s+([a-zA-Z]+)\b/i) ||
+      lower.match(/([a-zA-Z]+)\s+(?:ka|ke|ki)\s+(?:khata|udhaar|udhar|roz|roj|usual|hamesha)/i) ||
+      lower.match(/([a-zA-Z]+)'s\s+usual/i) ||
+      lower.match(/for\s+([a-zA-Z]+)\b/i) ||
       raw.match(/^([A-Z][a-z]+)\b/);
     if (kaMatch && !HINDI_NUMERALS[kaMatch[1].toLowerCase()]) {
       const candidate = kaMatch[1];
@@ -330,12 +405,31 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
         const beforeText = lower.slice(0, aliasIdx).trim();
         const beforeTokens = beforeText.split(/\s+/).filter(Boolean);
         const prevWord = beforeTokens[beforeTokens.length - 1];
+        const prevPrevWord = beforeTokens[beforeTokens.length - 2];
+
+        const afterText = lower.slice(aliasIdx + alias.length).trim();
+        const afterTokens = afterText.split(/\s+/).filter(Boolean);
+        const nextWord = afterTokens[0];
 
         let qty = 1;
         if (prevWord && HINDI_NUMERALS[prevWord] !== undefined) {
           qty = HINDI_NUMERALS[prevWord];
         } else if (prevWord && /^\d+$/.test(prevWord)) {
           qty = parseInt(prevWord, 10);
+        } else if (
+          prevWord &&
+          ['plate', 'cup', 'glass', 'piece', 'प्लेट', 'कप', 'गिलास'].includes(prevWord) &&
+          prevPrevWord &&
+          (HINDI_NUMERALS[prevPrevWord] !== undefined || /^\d+$/.test(prevPrevWord))
+        ) {
+          qty =
+            HINDI_NUMERALS[prevPrevWord] !== undefined
+              ? HINDI_NUMERALS[prevPrevWord]
+              : parseInt(prevPrevWord, 10);
+        } else if (nextWord && HINDI_NUMERALS[nextWord] !== undefined) {
+          qty = HINDI_NUMERALS[nextWord];
+        } else if (nextWord && /^\d+$/.test(nextWord)) {
+          qty = parseInt(nextWord, 10);
         }
 
         matchedItems.push({
@@ -349,53 +443,42 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
     }
   }
 
-  // Check if the user mentioned an item not on the menu
-  const stopWords = new Set([
-    ...Object.keys(HINDI_NUMERALS),
-    'aur',
-    'and',
-    'or',
-    'ka',
-    'ki',
-    'ke',
-    'khata',
-    'khate',
-    'udhaar',
-    'udhar',
-    'credit',
-    'bhai',
-    'ji',
-    'plate',
-    'cup',
-    'glass',
-    'order',
-    'de',
-    'do',
-    'dena',
-    'lagao',
-    ...(customerName ? [customerName.toLowerCase()] : []),
-  ]);
+  // Only flag unknown words when ZERO menu items matched (e.g. "do pizza")
+  let confidence = matchedItems.length > 0 ? 0.94 : 0.2;
+  if (matchedItems.length === 0) {
+    const stopWords = new Set([
+      ...Object.keys(HINDI_NUMERALS),
+      'aur',
+      'and',
+      'or',
+      'ka',
+      'ki',
+      'ke',
+      'khata',
+      'khate',
+      'udhaar',
+      'udhar',
+      'credit',
+      'bhai',
+      'bhaiya',
+      'ji',
+      'plate',
+      'cup',
+      'glass',
+      'order',
+      'de',
+      'do',
+      'dena',
+      'lagao',
+      'please',
+      'ek',
+      ...(customerName ? [customerName.toLowerCase()] : []),
+    ]);
 
-  const matchedWords = new Set();
-  for (const item of matchedItems) {
-    const menuEntry = menu.find((m) => m.name === item.name);
-    if (menuEntry) {
-      matchedWords.add(menuEntry.name.toLowerCase());
-      for (const a of menuEntry.aliases || []) {
-        a.toLowerCase()
-          .split(/\s+/)
-          .forEach((w) => matchedWords.add(w));
-      }
-    }
-  }
+    const unknownWords = tokens.filter(
+      (w) => !stopWords.has(w) && !/^\d+$/.test(w) && w.length > 2
+    );
 
-  const unknownWords = tokens.filter(
-    (w) => !stopWords.has(w) && !matchedWords.has(w) && !/^\d+$/.test(w) && w.length > 2
-  );
-
-  let confidence = matchedItems.length > 0 ? 0.92 : 0.2;
-  if (unknownWords.length > 0) {
-    confidence = matchedItems.length > 0 ? 0.55 : 0.2;
     for (const unk of unknownWords) {
       matchedItems.push({
         name: unk.charAt(0).toUpperCase() + unk.slice(1),
@@ -418,7 +501,11 @@ export function deterministicParseOrder(text, menu = [], knownCustomers = []) {
     usual: false,
     confidence,
     needsConfirmation,
-    reason: unknownWords.length > 0 ? 'Not on menu' : needsConfirmation ? 'Not sure' : undefined,
+    reason: matchedItems.some((i) => i.unmatched)
+      ? 'Not on menu'
+      : needsConfirmation
+        ? 'Not sure'
+        : undefined,
   };
 }
 
@@ -432,9 +519,9 @@ export async function parseVoiceOrder(text, menu = [], knownCustomers = []) {
     return deterministicParseOrder('', menu, knownCustomers);
   }
 
-  // First check if deterministic parser detects a "usual" phrase so it works reliably with or without LLM
+  // Fast path: if deterministic parser already matched menu items cleanly or detected "usual", return immediately
   const detCheck = deterministicParseOrder(raw, menu, knownCustomers);
-  if (detCheck.usual) {
+  if (detCheck.usual || (detCheck.items.length > 0 && !detCheck.needsConfirmation)) {
     ParsedOrderSchema.parse(detCheck);
     return detCheck;
   }

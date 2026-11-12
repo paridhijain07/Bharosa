@@ -106,48 +106,81 @@ export function startSpeechRecognition({
   const recognition = new SpeechRecognition();
   recognition.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
   recognition.interimResults = Boolean(interimResults);
-  recognition.maxAlternatives = 1;
-  recognition.continuous = false;
+  recognition.maxAlternatives = 3;
+  recognition.continuous = true;
 
   let hasFinalResult = false;
-  let latestInterim = '';
+  let latestTranscript = '';
+  let silenceTimer = null;
+
+  const finalizeAndSubmit = (textToSubmit) => {
+    if (hasFinalResult) return;
+    const cleaned = (textToSubmit || latestTranscript || '').trim();
+    if (!cleaned) return;
+    hasFinalResult = true;
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+    try {
+      recognition.stop();
+    } catch {
+      // ignore
+    }
+    onResult?.(cleaned);
+  };
 
   recognition.onresult = (event) => {
-    let interimTranscript = '';
-    let finalTranscript = '';
+    let combinedTranscript = '';
 
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    for (let i = 0; i < event.results.length; i++) {
       const res = event.results[i];
       const text = res?.[0]?.transcript || '';
-      if (res.isFinal) {
-        finalTranscript += text;
-      } else {
-        interimTranscript += text;
-      }
+      combinedTranscript += (combinedTranscript ? ' ' : '') + text.trim();
     }
 
-    if (interimTranscript) {
-      latestInterim = interimTranscript;
-      onInterim?.(interimTranscript);
-    }
+    const cleaned = combinedTranscript.trim();
+    if (cleaned) {
+      latestTranscript = cleaned;
+      onInterim?.(cleaned);
 
-    if (finalTranscript) {
-      hasFinalResult = true;
-      onResult?.(finalTranscript.trim());
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        finalizeAndSubmit(latestTranscript);
+      }, 1600);
     }
   };
 
   recognition.onerror = (event) => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
     if (event.error === 'language-not-supported' && recognition.lang === 'hi-IN') {
       recognition.lang = 'en-IN';
+      try {
+        recognition.start();
+        return;
+      } catch {
+        // fall through
+      }
+    }
+    if (latestTranscript.trim() && !hasFinalResult) {
+      finalizeAndSubmit(latestTranscript);
+      return;
     }
     onError?.(event.error || 'Voice recognition error');
   };
 
   recognition.onend = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
     if (!hasFinalResult) {
-      if (latestInterim.trim()) {
-        onResult?.(latestInterim.trim());
+      if (latestTranscript.trim()) {
+        hasFinalResult = true;
+        onResult?.(latestTranscript.trim());
         onEnd?.();
       } else {
         onEnd?.('');
@@ -157,7 +190,11 @@ export function startSpeechRecognition({
     }
   };
 
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (err) {
+    onError?.(err?.message || 'mic-start-error');
+  }
   return recognition;
 }
 

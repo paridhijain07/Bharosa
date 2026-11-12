@@ -710,15 +710,12 @@ function VendorHomeScreen({ lang, setLang }) {
 
   // Part A2: Start full-screen ListeningOverlay with live interim results
   const handleStartVoiceOrder = () => {
-    if (!isSpeechRecognitionSupported()) {
-      openTapBuilderModal({
-        title: lang === 'hi' ? 'टैप से ऑर्डर बनाएं' : 'Add Order by Tap',
-      });
-      return;
-    }
-
     setInterimTranscript('');
     setListeningOpen(true);
+
+    if (!isSpeechRecognitionSupported()) {
+      return;
+    }
 
     recognitionRef.current = startSpeechRecognition({
       lang,
@@ -726,18 +723,16 @@ function VendorHomeScreen({ lang, setLang }) {
         setInterimTranscript(liveText);
       },
       onResult: (finalTranscript) => {
-        setListeningOpen(false);
-        handleVoiceTranscript(finalTranscript);
+        if (finalTranscript && finalTranscript.trim()) {
+          setListeningOpen(false);
+          handleVoiceTranscript(finalTranscript);
+        }
       },
       onError: () => {
-        setListeningOpen(false);
-        handleVoiceTranscript('');
+        // Keep ListeningOverlay open so the user can keep speaking or tap a quick phrase
       },
-      onEnd: (emptyFallback) => {
-        setListeningOpen(false);
-        if (emptyFallback === '') {
-          handleVoiceTranscript('');
-        }
+      onEnd: () => {
+        // Keep ListeningOverlay open until speech is recognized or user confirms/cancels
       },
     });
   };
@@ -1307,10 +1302,7 @@ function VendorHomeScreen({ lang, setLang }) {
               setActiveTourStep(2);
               setMenuScannerOpen(false);
               setActiveView('tabs');
-              const menu = vendor?.menu || [];
-              const first = menu[0]?.name || 'Chaat';
-              const second = menu[1]?.name || 'Chai';
-              processTranscript(`2 ${first} aur 1 ${second}`);
+              handleStartVoiceOrder();
             }}
           >
             🎙️ {lang === 'hi' ? 'बोलकर ऑर्डर (Voice)' : 'Voice Order AI'}
@@ -1784,7 +1776,12 @@ function VendorHomeScreen({ lang, setLang }) {
       <ListeningOverlay
         isOpen={listeningOpen}
         lang={lang}
+        menu={vendor?.menu || []}
         interimTranscript={interimTranscript}
+        onSubmitTranscript={(txt) => {
+          handleCancelVoiceOrder();
+          handleVoiceTranscript(txt);
+        }}
         onCancel={handleCancelVoiceOrder}
       />
 
